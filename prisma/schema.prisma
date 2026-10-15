@@ -1,0 +1,860 @@
+// Prisma Schema for LGV SaaS (PostgreSQL multi-tenant)
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  USER
+}
+
+enum LicenseStatus {
+  TRIAL
+  ACTIVE
+  GRACE
+  EXPIRED
+  SUSPENDED
+}
+
+enum LicenseMode {
+  TRIAL
+  ANNUAL
+}
+
+enum CardKey {
+  COMMERCE
+  SERVICES
+  FLEET
+  CONSOLIDATION
+}
+
+enum CardStatus {
+  OPEN
+  MAINTENANCE
+}
+
+enum EmecefMode {
+  TEST
+  PRODUCTION
+}
+
+// ----------------------------------------------------
+// IDENTITÉ & UTILISATEURS GLOBAUX
+// ----------------------------------------------------
+model User {
+  id                String       @id @default(uuid())
+  email             String       @unique
+  emailVerified     DateTime?
+  passwordHash      String
+  fullName          String
+  phone             String?
+  avatarUrl         String?
+  twoFactorEnabled  Boolean      @default(false)
+  twoFactorSecret   String?      // Chiffré AES-256-GCM
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  sessions          Session[]
+  memberships       Membership[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  token        String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ----------------------------------------------------
+// TENANCY & ENTREPRISES
+// ----------------------------------------------------
+model Company {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  legalName   String
+  tradeName   String?
+  ifu         String   @unique // Contrainte d'unicité IFU plateforme (anti-abus essai)
+  rccm        String?
+  address     String
+  phone       String
+  email       String
+  logoUrl     String?
+  archivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships       Membership[]
+  license           License?
+  settings          CompanySettings?
+  emecefCredential  EmecefCredential?
+  auditLogs         AuditLog[]
+  documentSequences DocumentSequence[]
+
+  @@index([slug])
+  @@index([ifu])
+  @@map("companies")
+}
+
+model Membership {
+  id          String   @id @default(uuid())
+  userId      String
+  companyId   String
+  role        Role     @default(USER)
+  permissions String[] // Tableau de permissions sous format ressource.action
+  isActive    Boolean  @default(true)
+  joinedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model License {
+  id           String        @id @default(uuid())
+  companyId    String        @unique
+  planCode     String        // ESSENTIEL, PRO, ENTREPRISE
+  packs        String[]      // COMMERCE, SERVICES, FLEET, TRESORERIE
+  mode         LicenseMode   @default(TRIAL)
+  status       LicenseStatus @default(TRIAL)
+  seats        Int           @default(5)
+  trialEndsAt  DateTime?
+  endsAt       DateTime?
+  graceEndsAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("licenses")
+}
+
+model CompanySettings {
+  id                  String   @id @default(uuid())
+  companyId           String   @unique
+  currency            String   @default("XOF")
+  timezone            String   @default("Africa/Porto-Novo")
+  allowNegativeStock  Boolean  @default(false)
+  defaultVatRate      Int      @default(18) // 18 %
+  defaultAibRate      Int      @default(1)  // 1 %
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_settings")
+}
+
+model EmecefCredential {
+  id                 String     @id @default(uuid())
+  companyId          String     @unique
+  ifu                String
+  encryptedApiToken  String     // Chiffré AES-256-GCM
+  mecefUrl           String     @default("https://emecef.impots.bj")
+  mode               EmecefMode @default(TEST)
+  isActive           Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  company            Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("emecef_credentials")
+}
+
+// ----------------------------------------------------
+// REGISTRE DE MODULES & DRAPEAUX DE CARTES
+// ----------------------------------------------------
+model ModuleFlag {
+  id        String     @id @default(uuid())
+  cardKey   CardKey    @unique
+  status    CardStatus @default(MAINTENANCE)
+  updatedBy String?
+  updatedAt DateTime   @updatedAt
+
+  @@map("module_flags")
+}
+
+// ----------------------------------------------------
+// JOURNAL D'AUDIT EN AJOUT SEUL
+// ----------------------------------------------------
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String?
+  userId     String?
+  action     String   // ex: auth.login, users.update_role, customers.delete
+  resource   String   // ex: user, customer, invoice
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ----------------------------------------------------
+// NUMÉROTATION SÉQUENTIELLE VERROUILLÉE
+// ----------------------------------------------------
+model DocumentSequence {
+  id         String   @id @default(uuid())
+  companyId  String
+  docType    String   // INVOICE, PROFORMA, CREDIT_NOTE, PURCHASE, PAYSLIP
+  year       Int
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, docType, year])
+  @@index([companyId])
+  @@map("document_sequences")
+}
+
+// ----------------------------------------------------
+// CATALOGUE & PAIEMENTS FEDAPAY (PRÉPARATION M1B)
+// ----------------------------------------------------
+model PlanCatalog {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String
+  maxSeats    Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("plan_catalogs")
+}
+
+model PriceCatalog {
+  id            String    @id @default(uuid())
+  planCode      String
+  packCode      String
+  priceTtc      Int       // FCFA entier TTC pour 12 mois
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+
+  @@unique([planCode, packCode, effectiveFrom])
+  @@map("price_catalogs")
+}
+
+model LicenceOrder {
+  id             String   @id @default(uuid())
+  companyId      String
+  planCode       String
+  packs          String[]
+  amountTtc      Int      // FCFA TTC calculé côté serveur
+  status         String   @default("PENDING") // PENDING, APPROVED, DECLINED, CANCELED
+  idempotencyKey String   @unique
+  fedapayTxId    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("licence_orders")
+}
+
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  provider    String   @default("FEDAPAY")
+  eventId     String   @unique
+  payload     Json
+  processedAt DateTime @default(now())
+
+  @@map("webhook_events")
+}
+
+// ----------------------------------------------------
+// RÉFÉRENTIELS (MODULE M3)
+// ----------------------------------------------------
+
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum TaxGroup {
+  A // Exonéré
+  B // Taxable 18%
+  C // Exportation
+  D // Régime d'exception
+}
+
+model ProductCategory {
+  id          String    @id @default(uuid())
+  companyId   String
+  name        String
+  description String?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("product_categories")
+}
+
+model Unit {
+  id        String   @id @default(uuid())
+  companyId String
+  code      String   // ex: PCS, KG, LTR, CRTN
+  name      String   // ex: Pièce, Kilogramme, Litre, Carton
+  createdAt DateTime @default(now())
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  products  Product[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("units")
+}
+
+model Warehouse {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String   @default("Dépôt Principal")
+  address     String?
+  isDefault   Boolean  @default(true)
+  archivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("warehouses")
+}
+
+model Customer {
+  id           String       @id @default(uuid())
+  companyId    String
+  type         CustomerType @default(COMPANY)
+  name         String
+  ifu          String?      // Requis pour factures B2B e-MECeF
+  rccm         String?
+  phone        String
+  email        String?
+  address      String?
+  creditLimit  Int          @default(0) // Plafond en FCFA
+  currentDebt  Int          @default(0) // Créance courante en FCFA
+  archivedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, ifu])
+  @@map("customers")
+}
+
+model Supplier {
+  id                 String    @id @default(uuid())
+  companyId          String
+  name               String
+  ifu                String?
+  rccm               String?
+  phone              String
+  email              String?
+  address            String?
+  paymentTermsDays   Int       @default(0) // 0 = Comptant, 30 = 30 jours
+  archivedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("suppliers")
+}
+
+model Product {
+  id             String           @id @default(uuid())
+  companyId      String
+  categoryId     String?
+  unitId         String?
+  sku            String           // Référence / Code-barres
+  name           String
+  description    String?
+  salePriceHt    Int              // Prix vente unitaire HT en FCFA entier
+  costPrice      Int              // Prix de revient / achat HT en FCFA entier
+  taxGroup       TaxGroup         @default(B)
+  trackStock     Boolean          @default(true)
+  minStockAlert  Int              @default(5)
+  currentStock   Int              @default(0)
+  archivedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category       ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unit           Unit?            @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, sku])
+  @@index([companyId])
+  @@index([companyId, sku])
+  @@map("products")
+}
+
+// ----------------------------------------------------
+// STOCK & MOUVEMENTS (MODULE M4)
+// ----------------------------------------------------
+
+enum StockMovementType {
+  IN      // Achat fournisseur / Entrée
+  OUT     // Vente client / Sortie
+  ADJUST  // Correction d'inventaire
+  RETURN  // Avoir client ou retour fournisseur
+}
+
+model StockMovement {
+  id          String            @id @default(uuid())
+  companyId   String
+  productId   String
+  warehouseId String?
+  type        StockMovementType
+  quantity    Int               // Quantité positive ou négative selon mouvement
+  unitCost    Int               // Coût unitaire en FCFA entier
+  reason      String?           // Motif obligatoire pour ADJUST
+  refType     String?           // 'PURCHASE', 'SALE', 'INVENTORY', 'MANUAL'
+  refId       String?           // ID de la facture ou de l'inventaire
+  createdBy   String?
+  createdAt   DateTime          @default(now())
+
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([companyId, productId])
+  @@index([refType, refId])
+  @@map("stock_movements")
+}
+
+model InventorySession {
+  id          String          @id @default(uuid())
+  companyId   String
+  reference   String          // Ex: INV-2026-10-01
+  status      String          @default("DRAFT") // DRAFT, VALIDATED
+  note        String?
+  validatedAt DateTime?
+  validatedBy String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lines       InventoryLine[]
+
+  @@index([companyId])
+  @@map("inventory_sessions")
+}
+
+model InventoryLine {
+  id          String           @id @default(uuid())
+  sessionId   String
+  productId   String
+  expectedQty Int              // Stock théorique dérivé
+  countedQty  Int              // Stock physique compté
+  diffQty     Int              // countedQty - expectedQty
+  unitCost    Int              // Coût unitaire
+  reason      String?
+
+  session     InventorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("inventory_lines")
+}
+
+// ----------------------------------------------------
+// ACHATS FOURNISSEURS (MODULE M5)
+// ----------------------------------------------------
+
+enum PurchaseStatus {
+  DRAFT
+  VALIDATED
+  CANCELLED
+}
+
+enum PaymentMode {
+  COMPTANT
+  A_TERME
+}
+
+model PurchaseInvoice {
+  id              String                  @id @default(uuid())
+  companyId       String
+  supplierId      String
+  invoiceNumber   String                  // Ex: ACH-2026-0001
+  supplierRef     String?                 // N° facture fournisseur
+  status          PurchaseStatus          @default(DRAFT)
+  paymentMode     PaymentMode             @default(COMPTANT)
+  issueDate       DateTime                @default(now())
+  dueDate         DateTime?
+  totalGrossHt    Int                     // Montants en FCFA entiers
+  totalDiscount   Int                     @default(0)
+  totalNetHt      Int
+  totalVat        Int                     // TVA déductible 18%
+  totalTtc        Int
+  paidAmount      Int                     @default(0)
+  remainingAmount Int                     @default(0)
+  validatedAt     DateTime?
+  validatedBy     String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supplier        Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines           PurchaseInvoiceLine[]
+  payments        SupplierPayment[]
+  installments    SupplierInstallment[]
+
+  @@unique([companyId, invoiceNumber])
+  @@index([companyId])
+  @@index([companyId, supplierId])
+  @@map("purchase_invoices")
+}
+
+model PurchaseInvoiceLine {
+  id          String          @id @default(uuid())
+  invoiceId   String
+  productId   String
+  quantity    Int
+  unitPriceHt Int
+  discount    Int             @default(0)
+  netHt       Int
+  vatRate     Int             @default(18)
+  vatAmount   Int
+  totalTtc    Int
+
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product     Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@map("purchase_invoice_lines")
+}
+
+model SupplierPayment {
+  id            String          @id @default(uuid())
+  companyId     String
+  invoiceId     String
+  amount        Int             // FCFA entier
+  paymentMethod String          // Espèces, Mobile Money, Virement, Chèque
+  reference     String?
+  paymentDate   DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+
+  invoice       PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([invoiceId])
+  @@map("supplier_payments")
+}
+
+model SupplierInstallment {
+  id        String          @id @default(uuid())
+  invoiceId String
+  dueDate   DateTime
+  amount    Int
+  paid      Boolean         @default(false)
+
+  invoice   PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("supplier_installments")
+}
+
+// ----------------------------------------------------
+// VENTES & FACTURATION (MODULE M6)
+// ----------------------------------------------------
+
+enum SalesDocumentType {
+  PROFORMA
+  INVOICE
+  CREDIT_NOTE
+}
+
+enum SalesDocumentStatus {
+  DRAFT
+  VALIDATED
+  FISCALIZED
+  CANCELLED
+}
+
+model SalesDocument {
+  id                 String              @id @default(uuid())
+  companyId          String
+  customerId         String
+  type               SalesDocumentType   @default(INVOICE)
+  documentNumber     String              // Ex: FAC-2026-0001, PRO-2026-0001, AVO-2026-0001
+  status             SalesDocumentStatus @default(DRAFT)
+  paymentMode        PaymentMode         @default(COMPTANT)
+  issueDate          DateTime            @default(now())
+  dueDate            DateTime?
+  totalGrossHt       Int                 // FCFA entier
+  totalLineDiscount  Int                 @default(0)
+  globalDiscount     Int                 @default(0)
+  totalNetHt         Int
+  totalVat           Int
+  aibRate            Int                 @default(0) // 0, 1 ou 5 %
+  aibAmount          Int                 @default(0)
+  netToPay           Int
+  paidAmount         Int                 @default(0)
+  remainingAmount    Int                 @default(0)
+  totalCostSnapshot  Int                 @default(0) // Total prix de revient figé
+  totalMargin        Int                 @default(0) // Marge brute figée
+  originalInvoiceId  String?             // Pour les avoirs (CREDIT_NOTE)
+  originalMecefCode  String?             // Pour avoirs e-MECeF
+  validatedAt        DateTime?
+  validatedBy        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  lines              SalesLine[]
+  payments           SalesPayment[]
+  installments       SalesInstallment[]
+  emecefSubmissions  EmecefSubmission[]
+
+  @@unique([companyId, documentNumber])
+  @@index([companyId])
+  @@index([companyId, customerId])
+  @@index([companyId, type, status])
+  @@map("sales_documents")
+}
+
+model SalesLine {
+  id                String        @id @default(uuid())
+  documentId        String
+  productId         String
+  quantity          Int
+  unitPriceHt       Int
+  discountRate      Int           @default(0)
+  discountAmount    Int           @default(0)
+  netHt             Int
+  taxGroup          TaxGroup      @default(B)
+  vatRate           Int           @default(18)
+  vatAmount         Int
+  totalTtc          Int
+  costPriceSnapshot Int           @default(0) // Prix de revient figé à la validation
+  margin            Int           @default(0) // Net HT - (Qté * costPriceSnapshot)
+
+  document          SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  product           Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([documentId])
+  @@map("sales_lines")
+}
+
+model SalesPayment {
+  id            String        @id @default(uuid())
+  companyId     String
+  documentId    String
+  amount        Int
+  paymentMethod String        // Espèces, Mobile Money (MTN, Moov, Celtiis), Carte, Virement, Chèque
+  reference     String?
+  paymentDate   DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+
+  document      SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([documentId])
+  @@map("sales_payments")
+}
+
+model SalesInstallment {
+  id          String        @id @default(uuid())
+  documentId  String
+  dueDate     DateTime
+  amount      Int
+  paidAmount  Int           @default(0)
+  status      String        @default("PENDING") // PENDING, PARTIALLY_PAID, PAID, OVERDUE
+
+  document    SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("sales_installments")
+}
+
+model EmecefSubmission {
+  id              String        @id @default(uuid())
+  companyId       String
+  documentId      String
+  uid             String?
+  mecefCode       String?       // Code de 24 caractères DGI
+  nim             String?       // Numéro d'Identification Machine
+  qrCode          String?       // Chaîne de caractères QR code DGI
+  counters        String?
+  requestPayload  Json?
+  responsePayload Json?
+  signedAt        DateTime?
+  status          String        @default("PENDING") // PENDING, CONFIRMED, FAILED
+  createdAt       DateTime      @default(now())
+
+  document        SalesDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([documentId])
+  @@map("emecef_submissions")
+}
+
+// ----------------------------------------------------
+// RH & PAIE BÉNIN (MODULE M10)
+// ----------------------------------------------------
+
+enum ContractType {
+  CDI
+  CDD
+  STAGE
+  PRESTATION
+}
+
+model Employee {
+  id               String               @id @default(uuid())
+  companyId        String
+  registrationNumber String             // Matricule (ex: EMP-001)
+  firstName        String
+  lastName         String
+  ifu              String?              // IFU personnel du salarié
+  phone            String
+  email            String?
+  address          String?
+  jobTitle         String
+  category         String?              // Catégorie conventionnelle
+  department       String?
+  cnssNumber       String?              // N° d'immatriculation CNSS
+  hireDate         DateTime
+  archivedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  company          Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contracts        EmploymentContract[]
+  payslips         Payslip[]
+
+  @@unique([companyId, registrationNumber])
+  @@index([companyId])
+  @@map("employees")
+}
+
+model EmploymentContract {
+  id              String       @id @default(uuid())
+  employeeId      String
+  type            ContractType @default(CDI)
+  baseSalary      Int          // Salaire de base brut en FCFA entier
+  transportAllowance Int       @default(0) // Prime de transport
+  mealAllowance   Int          @default(0) // Prime de panier
+  otherAllowances Int          @default(0)
+  startDate       DateTime
+  endDate         DateTime?
+  active          Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employment_contracts")
+}
+
+model PayrollParameter {
+  id                     String    @id @default(uuid())
+  companyId              String
+  effectiveDate          DateTime  @default(now())
+  cnssEmployeeRate       Int       @default(360) // 3.6% stocké en centièmes (360 pour 3.60%)
+  cnssEmployerRetirement Int       @default(640) // 6.4%
+  cnssEmployerFamily     Int       @default(900) // 9.0%
+  cnssEmployerAccident   Int       @default(200) // 2.0%
+  smigFcfa               Int       @default(52000) // 52 000 FCFA
+  createdAt              DateTime  @default(now())
+
+  company                Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("payroll_parameters")
+}
+
+model PayrollRun {
+  id          String    @id @default(uuid())
+  companyId   String
+  month       Int       // 1 à 12
+  year        Int       // ex: 2026
+  status      String    @default("DRAFT") // DRAFT, VALIDATED, PAID
+  totalGross  Int       @default(0)
+  totalCnss   Int       @default(0)
+  totalIts    Int       @default(0)
+  totalNet    Int       @default(0)
+  validatedAt DateTime?
+  validatedBy String?
+  createdAt   DateTime  @default(now())
+
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payslips    Payslip[]
+
+  @@unique([companyId, year, month])
+  @@index([companyId])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id               String       @id @default(uuid())
+  companyId        String
+  runId            String
+  employeeId       String
+  payslipNumber    String       // Ex: BUL-2026-10-001
+  baseSalary       Int
+  totalAllowances  Int
+  grossSalary      Int
+  cnssEmployee     Int          // 3.6%
+  cnssEmployer     Int          // Retraite + Prestations + Accidents
+  taxableBase      Int
+  itsAmount        Int          // Impôt sur le Traitement des Salaires
+  otherDeductions  Int          @default(0)
+  netToPay         Int          // Net en FCFA entier
+  paymentMethod    String       @default("Virement")
+  paymentDate      DateTime?
+  createdAt        DateTime     @default(now())
+
+  payrollRun       PayrollRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employee         Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([runId])
+  @@index([employeeId])
+  @@map("payslips")
+}

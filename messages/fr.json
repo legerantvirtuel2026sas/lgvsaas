@@ -1,0 +1,56 @@
+{
+  "common": {
+    "appName": "LGV SaaS",
+    "appTagline": "Le Gérant Virtuel, version hébergée multi-entreprises",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "archive": "Archiver",
+    "search": "Rechercher...",
+    "filter": "Filtrer",
+    "export": "Exporter",
+    "actions": "Actions",
+    "loading": "Chargement en cours...",
+    "noResults": "Aucun résultat trouvé",
+    "currency": "FCFA"
+  },
+  "nav": {
+    "myCompanies": "Mes entreprises",
+    "addCompany": "Ajouter une entreprise",
+    "consolidatedDashboard": "Tableau de bord consolidé",
+    "profile": "Mon profil",
+    "security": "Sécurité & 2FA",
+    "logout": "Se déconnecter"
+  },
+  "cards": {
+    "commerce": {
+      "title": "Gestion commerciale",
+      "description": "Ventes, achats, stock, facturation e-MECeF et créances."
+    },
+    "services": {
+      "title": "Gestion des prestations et services",
+      "description": "Ce module est en cours de développement. Il sera bientôt disponible."
+    },
+    "fleet": {
+      "title": "Gestion de flotte et location",
+      "description": "Ce module est en cours de développement. Il sera bientôt disponible."
+    },
+    "consolidation": {
+      "title": "Consolidation des activités",
+      "description": "Synthèse consolidée des activités de l'entreprise. Bientôt disponible."
+    },
+    "maintenanceMessage": "Ce module est en cours de développement. Il sera bientôt disponible.",
+    "returnToHub": "Retour au Hub"
+  },
+  "auth": {
+    "login": "Se connecter",
+    "register": "Créer mon compte",
+    "email": "Adresse email",
+    "password": "Mot de passe",
+    "fullName": "Nom complet",
+    "phone": "Numéro de téléphone (+229)",
+    "twoFactorCode": "Code d'authentification 2FA",
+    "forgotPassword": "Mot de passe oublié ?"
+  }
+}

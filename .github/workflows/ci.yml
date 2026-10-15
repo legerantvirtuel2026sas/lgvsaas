@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-and-test:
+    name: Lint, Typecheck, Test & Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint
+
+      - name: Run Typecheck
+        run: npm run typecheck
+
+      - name: Run Security Audit
+        run: npm audit --audit-level=high
+
+      - name: Run Vitest Unit & Isolation Tests
+        run: npm run test
+        env:
+          AUTH_SECRET: "test-auth-secret-32-characters-minimum"
+          ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+      - name: Build Check
+        run: npm run build
+        env:
+          NEXT_PUBLIC_APP_URL: "https://preview.gerantvirtuel.bj"
+          AUTH_SECRET: "test-auth-secret-32-characters-minimum"
+          ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
