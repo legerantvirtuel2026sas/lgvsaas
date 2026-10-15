@@ -31,7 +31,7 @@ export const ACTIVITY_CARDS: Record<ActivityCardKey, ActivityCardDefinition> = {
     key: 'COMMERCE',
     title: 'Gestion commerciale',
     description: 'Ventes, achats, articles, stocks, facturation e-MECeF et créances.',
-    routePath: 'commerce',
+    routePath: 'commerce/tableau-de-bord',
     defaultStatus: 'OPEN',
     requiredPermission: 'access.commerce',
     requiredPack: 'COMMERCE',

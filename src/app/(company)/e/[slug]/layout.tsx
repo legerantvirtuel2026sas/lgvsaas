@@ -21,13 +21,13 @@ export default function CompanyLayout({
         licenseStatus="TRIAL"
         daysRemaining={7}
       />
-      <div className="flex flex-1">
+      <div className="flex flex-1 min-w-0">
         <Sidebar
           companySlug={companySlug}
           role="OWNER"
           userPermissions={[...ALL_PERMISSIONS]}
         />
-        <main className="flex-1 p-6 sm:p-8 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-6 sm:p-8 min-w-0 w-full">
           {children}
         </main>
       </div>
