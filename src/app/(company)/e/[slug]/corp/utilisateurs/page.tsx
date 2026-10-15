@@ -69,6 +69,31 @@ export default function UsersManagementPage({ params }: { params: { slug: string
 
   const [showInviteModal, setShowInviteModal] = React.useState(false);
   const [selectedMember, setSelectedMember] = React.useState<MemberItem | null>(null);
+  const [tempPermissions, setTempPermissions] = React.useState<string[]>([]);
+
+  const handleOpenRights = (m: MemberItem) => {
+    setSelectedMember(m);
+    setTempPermissions([...m.permissions]);
+  };
+
+  const handleTogglePermission = (perm: string) => {
+    if (tempPermissions.includes(perm)) {
+      setTempPermissions(tempPermissions.filter((p) => p !== perm));
+    } else {
+      setTempPermissions([...tempPermissions, perm]);
+    }
+  };
+
+  const handleSavePermissions = () => {
+    if (!selectedMember) return;
+    setMembers(
+      members.map((m) =>
+        m.userId === selectedMember.userId ? { ...m, permissions: tempPermissions } : m
+      )
+    );
+    setSelectedMember(null);
+    showToast(`Droits d'accès de "${selectedMember.user.fullName}" mis à jour.`);
+  };
 
   // Modal d'édition de l'utilisateur
   const [editingMember, setEditingMember] = React.useState<MemberItem | null>(null);
@@ -293,15 +318,22 @@ export default function UsersManagementPage({ params }: { params: { slug: string
                     </Badge>
                   </td>
 
-                  <td className="px-5 py-4 text-xs space-y-1">
+                  <td
+                    onClick={() => handleOpenRights(m)}
+                    className="px-5 py-4 text-xs space-y-1 cursor-pointer hover:bg-purple-50/60 transition-colors"
+                    title="Cliquez pour configurer les droits et autorisations"
+                  >
                     {m.role === 'OWNER' ? (
-                      <span className="text-green-700 font-medium">Toutes (Propriétaire)</span>
+                      <span className="text-green-700 font-medium flex items-center gap-1">
+                        <Shield className="w-3.5 h-3.5 text-green-600 inline" />
+                        Toutes (Propriétaire)
+                      </span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {hasCosts && <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded text-[10px] font-medium border border-red-200">Prix de revient</span>}
                         {hasProfit && <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-200">Bénéfices</span>}
                         {hasPayroll && <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded text-[10px] font-medium border border-purple-200">Paie/Salaires</span>}
-                        {!hasCosts && !hasProfit && !hasPayroll && <span className="text-gray-400 italic">Aucune</span>}
+                        {!hasCosts && !hasProfit && !hasPayroll && <span className="text-gray-400 italic">Aucun accès financier sensible</span>}
                       </div>
                     )}
                   </td>
@@ -337,7 +369,7 @@ export default function UsersManagementPage({ params }: { params: { slug: string
                       <div className="relative group/rights">
                         <button
                           type="button"
-                          onClick={() => setSelectedMember(m)}
+                          onClick={() => handleOpenRights(m)}
                           className="p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-center"
                           title="Gérer les droits"
                           aria-label="Droits"
@@ -546,33 +578,206 @@ export default function UsersManagementPage({ params }: { params: { slug: string
       {selectedMember && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-5">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">
-                Droits de {selectedMember.user.fullName}
-              </h3>
-              <p className="text-xs text-gray-500">Rôle actuel : {selectedMember.role}</p>
-            </div>
-
-            <div className="space-y-3 max-h-80 overflow-y-auto p-1">
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs space-y-1">
-                <span className="font-bold text-red-800">Permissions sensibles séparées :</span>
-                <p className="text-red-700">
-                  Les permissions de visualisation des prix de revient (<code>costs.view</code>), des bénéfices (<code>profit.view</code>) et de la paie (<code>payroll.view</code>) sont strictement isolées pour protéger vos marges.
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-purple-600" />
+                  Droits d'accès de {selectedMember.user.fullName}
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Rôle : <span className="font-semibold text-gray-700">
+                    {selectedMember.role === 'OWNER' ? 'Propriétaire' : selectedMember.role === 'ADMIN' ? 'Administrateur' : 'Collaborateur standard'}
+                  </span>
                 </p>
               </div>
+              <Badge variant={selectedMember.role === 'OWNER' ? 'default' : 'outline'}>
+                {selectedMember.role === 'OWNER' ? 'Propriétaire' : selectedMember.role === 'ADMIN' ? 'Admin' : 'Utilisateur'}
+              </Badge>
+            </div>
 
-              <div className="text-xs text-gray-600">
-                <strong>Total des permissions actives :</strong> {selectedMember.permissions.length} sur {ALL_PERMISSIONS.length}
+            {/* Bannière explicative sans codes techniques */}
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-2.5">
+              <div className="font-bold text-amber-900 flex items-center gap-1.5 text-sm">
+                <Shield className="w-4 h-4 text-amber-700" />
+                Confidentialité et protection des marges
+              </div>
+              <p className="text-amber-800 leading-relaxed">
+                Les autorisations de consultation des prix de revient, des bénéfices et de la paie sont strictement compartimentées pour protéger vos marges commerciales.
+              </p>
+
+              <div className="pt-1.5 border-t border-amber-200">
+                {(() => {
+                  const noSensitive = !tempPermissions.includes('costs.view') &&
+                    !tempPermissions.includes('profit.view') &&
+                    !tempPermissions.includes('payroll.view');
+
+                  if (noSensitive) {
+                    return (
+                      <div className="flex items-start gap-2 text-red-700 bg-red-50 p-2.5 rounded-lg border border-red-200">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                        <span>
+                          <strong>Limite imposée :</strong> Cet utilisateur n'a pas la permission de visualiser les prix de revient, des bénéfices ou les paies. Ces informations sensibles restent masquées sur son écran pour protéger vos marges.
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const missing: string[] = [];
+                  if (!tempPermissions.includes('costs.view')) missing.push('les prix de revient');
+                  if (!tempPermissions.includes('profit.view')) missing.push('les marges et bénéfices');
+                  if (!tempPermissions.includes('payroll.view')) missing.push('les paies et salaires');
+
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
+                        <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                        <span>
+                          Cet utilisateur dispose d'une autorisation pour consulter les données financières sensibles cochées ci-dessous.
+                        </span>
+                      </div>
+                      {missing.length > 0 && (
+                        <div className="flex items-start gap-2 text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-xs">
+                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                          <span>
+                            <strong>Limite imposée :</strong> cet utilisateur n'a pas la permission de visualiser {missing.join(', ')}. Ces informations restent masquées sur son interface.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end space-x-2">
+            {/* Définition des droits et autorisations */}
+            {selectedMember.role === 'OWNER' ? (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">
+                Le rôle <strong>Propriétaire</strong> dispose automatiquement de l'ensemble des droits et autorisations d'administration sur toute l'entreprise.
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
+                <div className="border-b border-gray-100 pb-1">
+                  <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                    Définir les autorisations d'accès
+                  </span>
+                  <p className="text-[11px] text-gray-500">
+                    Cochez ou décochez les permissions accordées à ce collaborateur
+                  </p>
+                </div>
+
+                {/* Groupe 1 : Données financières sensibles */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-red-700 block">Données financières sensibles</span>
+                  <div className="space-y-2 pl-2">
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('costs.view')}
+                        onChange={() => handleTogglePermission('costs.view')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Visualiser les prix de revient des articles</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('profit.view')}
+                        onChange={() => handleTogglePermission('profit.view')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Visualiser les marges et bénéfices financiers</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('payroll.view')}
+                        onChange={() => handleTogglePermission('payroll.view')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Consulter la paie et les salaires</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Groupe 2 : Gestion commerciale */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-blue-700 block">Ventes & Facturation</span>
+                  <div className="space-y-2 pl-2">
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('sales.create')}
+                        onChange={() => handleTogglePermission('sales.create')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Émettre des factures et tickets de vente</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('sales.validate')}
+                        onChange={() => handleTogglePermission('sales.validate')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Valider et normaliser e-MECeF Bénin</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('proformas.create')}
+                        onChange={() => handleTogglePermission('proformas.create')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Établir des factures proforma et devis</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Groupe 3 : Clients & Stocks */}
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold text-gray-700 block">Clients & Catalogue</span>
+                  <div className="space-y-2 pl-2">
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('customers.create')}
+                        onChange={() => handleTogglePermission('customers.create')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Créer et modifier des clients</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('products.create')}
+                        onChange={() => handleTogglePermission('products.create')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Créer et modifier des articles</span>
+                    </label>
+                    <label className="flex items-center gap-2.5 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tempPermissions.includes('stock.adjust')}
+                        onChange={() => handleTogglePermission('stock.adjust')}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>Ajuster les stocks physiques et inventaires</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-gray-100 flex justify-end space-x-2">
               <Button variant="outline" onClick={() => setSelectedMember(null)}>
                 Fermer
               </Button>
-              <Button onClick={() => setSelectedMember(null)}>
-                Enregistrer les droits
-              </Button>
+              {selectedMember.role !== 'OWNER' && (
+                <Button onClick={handleSavePermissions}>
+                  Enregistrer les droits
+                </Button>
+              )}
             </div>
           </div>
         </div>
