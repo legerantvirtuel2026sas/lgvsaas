@@ -132,7 +132,6 @@ export const licenseService = {
     const orderId = payload.entity.custom_metadata?.orderId || verifiedTx.orderId;
     const order = await prisma.licenceOrder.findUnique({
       where: { id: orderId },
-      include: { company: true },
     });
 
     if (!order) {

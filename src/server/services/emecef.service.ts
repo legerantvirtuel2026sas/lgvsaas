@@ -1,5 +1,5 @@
 import { prisma } from '../db/client';
-import { assertAuthorized, AuthContext, ForbiddenError } from '../auth/guards';
+import { assertAuthorized, AuthContext } from '../auth/guards';
 import { encryptData, decryptData } from '../auth/crypto';
 import { emecefClient } from '../integrations/emecef/client';
 import { EmecefInvoiceRequest, EmecefInvoiceType } from '../integrations/emecef/types';

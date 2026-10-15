@@ -97,7 +97,7 @@ export default function ConsolidatedDashboardPage() {
 
           <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
             <span className="text-xs font-semibold text-gray-400 uppercase">Effectif global</span>
-            <div className="text-2xl font-black text-gray-900 mt-1">{grandTotalEmployees} salariés</span>
+            <div className="text-2xl font-black text-gray-900 mt-1">{grandTotalEmployees} salariés</div>
             <span className="text-xs text-gray-500">Masse salariale consolidée</span>
           </div>
         </div>

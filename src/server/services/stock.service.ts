@@ -1,7 +1,6 @@
 import { prisma } from '../db/client';
 import { assertAuthorized, AuthContext, ForbiddenError } from '../auth/guards';
 import { calculateNewCmup, assertStockAvailable, calculateTotalStockValuation } from '../domain/stock';
-import { recordAuditEvent } from './audit';
 
 export interface RecordStockMovementInput {
   companyId: string;

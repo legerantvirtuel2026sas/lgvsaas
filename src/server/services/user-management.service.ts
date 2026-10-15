@@ -16,7 +16,7 @@ import {
 } from '../schemas/user-management.schema';
 import { recordAuditEvent } from './audit';
 import { hashPassword, generateSecureToken } from '../auth/crypto';
-import { Permission, ADMIN_DEFAULT_PERMISSIONS, USER_DEFAULT_PERMISSIONS } from '../auth/permissions';
+import { ADMIN_DEFAULT_PERMISSIONS, USER_DEFAULT_PERMISSIONS } from '../auth/permissions';
 
 export const userManagementService = {
   /**
