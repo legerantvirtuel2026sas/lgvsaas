@@ -16,6 +16,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:local": "node scripts/start-local-db.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,css,md}\""
   },
   "dependencies": {
@@ -56,6 +57,7 @@
     "@typescript-eslint/eslint-plugin": "^8.9.0",
     "@typescript-eslint/parser": "^8.9.0",
     "autoprefixer": "^10.4.20",
+    "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.15",
     "husky": "^9.1.6",

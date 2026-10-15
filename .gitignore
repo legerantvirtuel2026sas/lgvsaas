@@ -30,3 +30,6 @@ next-env.d.ts
 
 # Prisma generated
 /src/generated/
+
+# Local embedded database
+.local-db/
