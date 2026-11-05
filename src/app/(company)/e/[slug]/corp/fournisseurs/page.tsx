@@ -6,55 +6,29 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable, ColumnDef } from '@/components/data-table/data-table';
 import { formatFcfa } from '@/server/domain/money';
+import { loadSuppliers, saveSuppliers, DEFAULT_SUPPLIERS, SupplierItem } from '@/lib/suppliers-store';
 
-interface SupplierRow extends Record<string, unknown> {
-  id: string;
-  name: string;
-  ifu: string;
-  phone: string;
-  email: string;
-  address?: string;
-  currentDebt: number;
-  paymentTermsDays: number;
-  hasInvoices?: boolean;
-}
+interface SupplierRow extends Record<string, unknown>, SupplierItem {}
 
 export default function SuppliersPage({ params }: { params: { slug: string } }) {
-  const [suppliers, setSuppliers] = React.useState<SupplierRow[]>([
-    {
-      id: 'sup_1',
-      name: 'GROUPE CFAO MOTORS BENIN',
-      ifu: '0201900012345',
-      phone: '+229 21 31 20 00',
-      email: 'contact@cfaogroup.com',
-      address: 'Boulevard de la Marina, Cotonou',
-      currentDebt: 1250000,
-      paymentTermsDays: 30,
-      hasInvoices: true,
-    },
-    {
-      id: 'sup_2',
-      name: 'PAPETERIE NATIONALE BENINOISE',
-      ifu: '0202111199887',
-      phone: '+229 97 45 67 89',
-      email: 'ventes@papeterie-bj.com',
-      address: 'Avenue Clozel, Cotonou',
-      currentDebt: 0,
-      paymentTermsDays: 15,
-      hasInvoices: true,
-    },
-    {
-      id: 'sup_3',
-      name: 'ETS BABA & FRERES QUINCAILLERIE',
-      ifu: '0202455512123',
-      phone: '+229 96 11 22 33',
-      email: 'baba.quincaillerie@gmail.com',
-      address: 'Marché Dantokpa, Cotonou',
-      currentDebt: 0,
-      paymentTermsDays: 0,
-      hasInvoices: false,
-    },
-  ]);
+  const companySlug = params.slug;
+  const [suppliers, setSuppliers] = React.useState<SupplierRow[]>(DEFAULT_SUPPLIERS);
+
+  // Synchronisation avec le magasin local partagé
+  React.useEffect(() => {
+    const loaded = loadSuppliers(companySlug);
+    setSuppliers(loaded as SupplierRow[]);
+
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.companySlug === companySlug && customEvent.detail?.suppliers) {
+        setSuppliers(customEvent.detail.suppliers as SupplierRow[]);
+      }
+    };
+
+    window.addEventListener('lgv_suppliers_changed', handleSync);
+    return () => window.removeEventListener('lgv_suppliers_changed', handleSync);
+  }, [companySlug]);
 
   // Modal d'ajout
   const [showAddModal, setShowAddModal] = React.useState(false);
@@ -94,7 +68,9 @@ export default function SuppliersPage({ params }: { params: { slug: string } }) 
       paymentTermsDays: parseInt(paymentTermsDays, 10) || 0,
       hasInvoices: false,
     };
-    setSuppliers([newSup, ...suppliers]);
+    const nextSuppliers = [newSup, ...suppliers];
+    setSuppliers(nextSuppliers);
+    saveSuppliers(companySlug, nextSuppliers);
     setShowAddModal(false);
     setName('');
     setIfu('');
@@ -137,6 +113,7 @@ export default function SuppliersPage({ params }: { params: { slug: string } }) 
     });
 
     setSuppliers(updated);
+    saveSuppliers(companySlug, updated);
     setEditingSupplier(null);
     showToast(`Modifications enregistrées pour "${editingSupplier.name}".`);
   };
@@ -151,7 +128,9 @@ export default function SuppliersPage({ params }: { params: { slug: string } }) 
       return;
     }
     if (confirm(`Confirmez-vous la suppression du fournisseur "${sup.name}" ?`)) {
-      setSuppliers(suppliers.filter((s) => s.id !== sup.id));
+      const remaining = suppliers.filter((s) => s.id !== sup.id);
+      setSuppliers(remaining);
+      saveSuppliers(companySlug, remaining);
       showToast(`Fournisseur "${sup.name}" supprimé.`);
     }
   };
