@@ -18,74 +18,35 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { DataTable, ColumnDef } from '@/components/data-table/data-table';
 import { formatFcfa } from '@/server/domain/money';
+import {
+  loadArticles,
+  saveArticles,
+  DEFAULT_ARTICLES,
+  ArticleItem,
+} from '@/lib/articles-store';
 
-interface ProductRow extends Record<string, unknown> {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  salePriceHt: number;
-  costPrice: number | null;
-  taxGroup: 'A' | 'B' | 'C' | 'D';
-  currentStock: number;
-  minStockAlert: number;
-  hasTransactions?: boolean;
-}
+interface ProductRow extends Record<string, unknown>, ArticleItem {}
 
 export default function ArticlesPage({ params }: { params: { slug: string } }) {
   const companySlug = params.slug;
   const companyDisplayName = companySlug.replace(/-/g, ' ').toUpperCase();
 
-  const [products, setProducts] = React.useState<ProductRow[]>([
-    {
-      id: 'prod_1',
-      sku: 'RAM-A4-80G',
-      name: 'Rame de papier A4 80g Double A',
-      category: 'Fournitures de bureau',
-      salePriceHt: 3500,
-      costPrice: 2450,
-      taxGroup: 'B',
-      currentStock: 4, // Stock faible
-      minStockAlert: 15,
-      hasTransactions: true,
-    },
-    {
-      id: 'prod_2',
-      sku: 'TONER-HP-05A',
-      name: 'Cartouche de Toner HP LaserJet 05A Noir',
-      category: 'Consommables',
-      salePriceHt: 45000,
-      costPrice: 32000,
-      taxGroup: 'B',
-      currentStock: 2, // Stock faible
-      minStockAlert: 5,
-      hasTransactions: true,
-    },
-    {
-      id: 'prod_3',
-      sku: 'CLAV-LOGI-K120',
-      name: 'Clavier USB Filaire Logitech K120',
-      category: 'Informatique',
-      salePriceHt: 6500,
-      costPrice: 4200,
-      taxGroup: 'B',
-      currentStock: 0, // Rupture
-      minStockAlert: 5,
-      hasTransactions: false,
-    },
-    {
-      id: 'prod_4',
-      sku: 'SOURIS-LOGI-M185',
-      name: 'Souris Optique Sans Fil Logitech M185',
-      category: 'Informatique',
-      salePriceHt: 8500,
-      costPrice: 5500,
-      taxGroup: 'B',
-      currentStock: 48, // Stock disponible
-      minStockAlert: 10,
-      hasTransactions: true,
-    },
-  ]);
+  const [products, setProducts] = React.useState<ProductRow[]>(DEFAULT_ARTICLES as ProductRow[]);
+
+  React.useEffect(() => {
+    const loaded = loadArticles(companySlug);
+    setProducts(loaded as ProductRow[]);
+
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.companySlug === companySlug && customEvent.detail?.articles) {
+        setProducts(customEvent.detail.articles as ProductRow[]);
+      }
+    };
+
+    window.addEventListener('lgv_articles_changed', handleSync);
+    return () => window.removeEventListener('lgv_articles_changed', handleSync);
+  }, [companySlug]);
 
   // Modal d'ajout
   const [showAddModal, setShowAddModal] = React.useState(false);
@@ -139,7 +100,9 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       minStockAlert: parseInt(minStockAlert, 10) || 5,
       hasTransactions: false,
     };
-    setProducts([newProd, ...products]);
+    const nextProducts = [newProd, ...products];
+    setProducts(nextProducts);
+    saveArticles(companySlug, nextProducts);
     setShowAddModal(false);
     setSku('');
     setName('');
@@ -168,24 +131,24 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
 
     const isLocked = editingProduct.currentStock > 0 || !!editingProduct.hasTransactions;
 
-    setProducts(
-      products.map((p) => {
-        if (p.id === editingProduct.id) {
-          return {
-            ...p,
-            sku: isLocked ? p.sku : editSku.trim().toUpperCase(),
-            name: isLocked ? p.name : editName.trim(),
-            category: editCategory.trim() || 'Général',
-            salePriceHt: parseInt(editSalePriceHt, 10) || 0,
-            costPrice: parseInt(editCostPrice, 10) || 0,
-            taxGroup: editTaxGroup,
-            minStockAlert: parseInt(editMinStockAlert, 10) || 5,
-          };
-        }
-        return p;
-      })
-    );
+    const updated = products.map((p) => {
+      if (p.id === editingProduct.id) {
+        return {
+          ...p,
+          sku: isLocked ? p.sku : editSku.trim().toUpperCase(),
+          name: isLocked ? p.name : editName.trim(),
+          category: editCategory.trim() || 'Général',
+          salePriceHt: parseInt(editSalePriceHt, 10) || 0,
+          costPrice: parseInt(editCostPrice, 10) || 0,
+          taxGroup: editTaxGroup,
+          minStockAlert: parseInt(editMinStockAlert, 10) || 5,
+        };
+      }
+      return p;
+    });
 
+    setProducts(updated);
+    saveArticles(companySlug, updated);
     setEditingProduct(null);
     showToast(`Article "${editingProduct.name}" mis à jour.`);
   };
@@ -201,7 +164,9 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       return;
     }
     if (confirm(`Confirmez-vous la suppression de l'article ${prod.sku} - ${prod.name} ?`)) {
-      setProducts(products.filter((p) => p.id !== prod.id));
+      const remaining = products.filter((p) => p.id !== prod.id);
+      setProducts(remaining);
+      saveArticles(companySlug, remaining);
       showToast(`Article "${prod.name}" supprimé.`);
     }
   };
