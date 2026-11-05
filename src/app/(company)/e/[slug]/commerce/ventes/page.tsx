@@ -354,12 +354,13 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
   const netToPay = totalTtc + aibAmount;
 
   // Calculs de règlement
-  const parsedPaidAmount = paymentMode === 'A_TERME'
-    ? (parseInt(paidAmountInput, 10) || 0)
-    : netToPay;
-  const remainingDebt = Math.max(0, netToPay - parsedPaidAmount);
+  // Par défaut égal au Net à Payer (ou 0 pour mode À terme), mais librement modifiable manuellement pour un paiement partiel
+  const effectivePaidAmount = paidAmountInput !== ''
+    ? Math.max(0, parseInt(paidAmountInput, 10) || 0)
+    : (paymentMode === 'A_TERME' ? 0 : netToPay);
+  const remainingDebt = Math.max(0, netToPay - effectivePaidAmount);
   const parsedReceivedCash = parseInt(receivedCashInput, 10) || 0;
-  const changeDue = Math.max(0, parsedReceivedCash - parsedPaidAmount);
+  const changeDue = Math.max(0, parsedReceivedCash - effectivePaidAmount);
 
   // Ouverture du modal de création de facture
   const handleOpenNewInvoice = () => {
@@ -512,17 +513,17 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       discountAmount: discountTotal,
       totalNetHt,
       totalVat,
-      specificTaxTotal,
+      specificTaxTotal: 0,
       aibRate: effectiveAibRate,
       aibAmount,
       totalTtc,
       netToPay,
       paymentMode,
-      paidAmount: status === 'DRAFT' ? 0 : parsedPaidAmount,
+      paidAmount: status === 'DRAFT' ? 0 : effectivePaidAmount,
       remainingAmount: status === 'DRAFT' ? netToPay : remainingDebt,
       receivedCash: parsedReceivedCash,
       changeDue,
-      dueDate: paymentMode === 'A_TERME' ? (dueDateInput || '30 jours') : undefined,
+      dueDate: remainingDebt > 0 ? (dueDateInput || '30 jours') : undefined,
       status,
       emecefNim,
       emecefCounters,
@@ -1191,7 +1192,6 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       <th className="py-2.5 px-3 text-center">Qté</th>
                       <th className="py-2.5 px-3 text-right">PU TTC</th>
                       <th className="py-2.5 px-3 text-right">PU TTC Remise</th>
-                      <th className="py-2.5 px-3 text-right">Taxe Spécifique</th>
                       <th className="py-2.5 px-3 text-right">Total TTC</th>
                       <th className="py-2.5 px-2 text-center w-10"></th>
                     </tr>
@@ -1199,7 +1199,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   <tbody className="divide-y divide-gray-100">
                     {invoiceLines.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-gray-400 italic">
+                        <td colSpan={6} className="py-8 text-center text-gray-400 italic">
                           Aucun article dans la facture. Sélectionnez un article ci-dessus et cliquez sur « Ajouter ».
                         </td>
                       </tr>
@@ -1217,9 +1217,6 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                           </td>
                           <td className="py-2 px-3 text-right font-mono text-gray-600">
                             {line.unitDiscount > 0 ? formatFcfa(Math.max(0, line.unitPriceTtc - line.unitDiscount)) : formatFcfa(line.unitPriceTtc)}
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono text-gray-500">
-                            {formatFcfa(line.specificTax * line.quantity)}
                           </td>
                           <td className="py-2 px-3 text-right font-bold font-mono text-gray-900">
                             {formatFcfa(line.totalLineTtc)}
@@ -1320,11 +1317,16 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 </div>
               </div>
 
-              {/* Ligne 6 : Gestion du Règlement (Espèces, Mobile Money, À terme, Reliquat) */}
+              {/* Ligne 6 : Gestion du Règlement & Encaissement */}
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3 text-xs">
-                <span className="font-bold uppercase tracking-wider text-gray-700 block border-b pb-1">
-                  Gestion du Règlement & Encaissement
-                </span>
+                <div className="flex items-center justify-between border-b pb-1">
+                  <span className="font-bold uppercase tracking-wider text-gray-700 block">
+                    Gestion du Règlement & Encaissement
+                  </span>
+                  <span className="text-[11px] text-gray-500">
+                    Net exigible : <strong className="font-mono text-blue-700">{formatFcfa(netToPay)}</strong>
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   <div>
@@ -1343,24 +1345,45 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   </div>
 
                   <div>
-                    <label className="font-semibold text-gray-700 block mb-1">Montant Payé (FCFA)</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-semibold text-gray-700 block">Montant Payé (FCFA) *</label>
+                      {paidAmountInput !== '' && (
+                        <button
+                          type="button"
+                          onClick={() => setPaidAmountInput('')}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline"
+                          title="Rétablir le montant par défaut"
+                        >
+                          Tout solder
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="number"
-                      value={paymentMode === 'A_TERME' ? paidAmountInput : netToPay}
-                      disabled={paymentMode !== 'A_TERME'}
+                      min="0"
+                      value={paidAmountInput !== '' ? paidAmountInput : (paymentMode === 'A_TERME' ? '0' : (netToPay > 0 ? String(netToPay) : ''))}
                       onChange={(e) => setPaidAmountInput(e.target.value)}
-                      placeholder={String(netToPay)}
-                      className="w-full h-9 px-2.5 border border-gray-300 rounded-md bg-white font-mono font-bold text-gray-900"
+                      placeholder={String(paymentMode === 'A_TERME' ? 0 : netToPay)}
+                      className="w-full h-9 px-2.5 border border-gray-300 rounded-md bg-white font-mono font-bold text-gray-900 focus:ring-1 focus:ring-blue-500"
+                      title="Montant encaissé. Par défaut le montant total, modifiable pour saisir un montant inférieur ou partiel."
                     />
+                    <span className="text-[10px] text-gray-400 mt-0.5 block">
+                      {paidAmountInput === '' ? 'Par défaut • Modifiable manuellement' : 'Montant saisi manuellement'}
+                    </span>
                   </div>
 
                   <div>
                     <label className="font-semibold text-gray-700 block mb-1">Reste à payer (Dette)</label>
-                    <div className="h-9 px-2.5 bg-white border border-gray-200 rounded-md flex items-center">
-                      <span className={`font-mono font-bold ${remainingDebt > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                    <div className={`h-9 px-2.5 rounded-md flex items-center border ${
+                      remainingDebt > 0 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+                    }`}>
+                      <span className={`font-mono font-bold ${remainingDebt > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
                         {formatFcfa(remainingDebt)}
                       </span>
                     </div>
+                    <span className="text-[10px] text-gray-400 mt-0.5 block">
+                      {remainingDebt > 0 ? 'Créance client restante' : 'Soldé'}
+                    </span>
                   </div>
 
                   {paymentMode === 'ESPECES' ? (
@@ -1397,6 +1420,27 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                     </div>
                   )}
                 </div>
+
+                {/* Échéancier automatique si paiement partiel en mode espèces */}
+                {paymentMode === 'ESPECES' && remainingDebt > 0 && (
+                  <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2">
+                    <div className="text-[11px] text-amber-900 flex items-center gap-1.5 font-medium">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        Paiement partiel : Le solde impayé de <strong className="font-mono font-bold text-red-700">{formatFcfa(remainingDebt)}</strong> sera imputé en créance client.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] font-bold text-gray-700 whitespace-nowrap">Échéance accordée :</label>
+                      <input
+                        type="date"
+                        value={dueDateInput}
+                        onChange={(e) => setDueDateInput(e.target.value)}
+                        className="h-8 px-2 border border-gray-300 rounded text-xs bg-white text-gray-900 font-medium"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
