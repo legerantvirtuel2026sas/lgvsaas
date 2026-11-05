@@ -1,7 +1,18 @@
 'use client';
 
 import * as React from 'react';
-import { Pencil, Trash2, Lock, AlertCircle, Plus, Check } from 'lucide-react';
+import {
+  Pencil,
+  Trash2,
+  Lock,
+  AlertCircle,
+  Plus,
+  Check,
+  Download,
+  Package,
+  Boxes,
+  AlertTriangle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,6 +33,9 @@ interface ProductRow extends Record<string, unknown> {
 }
 
 export default function ArticlesPage({ params }: { params: { slug: string } }) {
+  const companySlug = params.slug;
+  const companyDisplayName = companySlug.replace(/-/g, ' ').toUpperCase();
+
   const [products, setProducts] = React.useState<ProductRow[]>([
     {
       id: 'prod_1',
@@ -31,7 +45,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       salePriceHt: 3500,
       costPrice: 2450,
       taxGroup: 'B',
-      currentStock: 4, // Alerte stock
+      currentStock: 4, // Stock faible
       minStockAlert: 15,
       hasTransactions: true,
     },
@@ -43,7 +57,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       salePriceHt: 45000,
       costPrice: 32000,
       taxGroup: 'B',
-      currentStock: 2, // Alerte stock
+      currentStock: 2, // Stock faible
       minStockAlert: 5,
       hasTransactions: true,
     },
@@ -55,9 +69,21 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       salePriceHt: 6500,
       costPrice: 4200,
       taxGroup: 'B',
-      currentStock: 0,
+      currentStock: 0, // Rupture
       minStockAlert: 5,
       hasTransactions: false,
+    },
+    {
+      id: 'prod_4',
+      sku: 'SOURIS-LOGI-M185',
+      name: 'Souris Optique Sans Fil Logitech M185',
+      category: 'Informatique',
+      salePriceHt: 8500,
+      costPrice: 5500,
+      taxGroup: 'B',
+      currentStock: 48, // Stock disponible
+      minStockAlert: 10,
+      hasTransactions: true,
     },
   ]);
 
@@ -69,6 +95,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
   const [salePriceHt, setSalePriceHt] = React.useState('');
   const [costPrice, setCostPrice] = React.useState('');
   const [taxGroup, setTaxGroup] = React.useState<'A' | 'B' | 'C' | 'D'>('B');
+  const [initialStock, setInitialStock] = React.useState('0');
   const [minStockAlert, setMinStockAlert] = React.useState('5');
 
   // Modal d'édition
@@ -81,6 +108,8 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
   const [editTaxGroup, setEditTaxGroup] = React.useState<'A' | 'B' | 'C' | 'D'>('B');
   const [editMinStockAlert, setEditMinStockAlert] = React.useState('5');
 
+  // État d'exportation PDF
+  const [isExporting, setIsExporting] = React.useState(false);
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -88,6 +117,14 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
     setTimeout(() => setToastMessage(null), 4500);
   };
 
+  // Statistiques calculées en temps réel
+  const totalArticles = products.length;
+  const totalStockUnits = products.reduce((acc, p) => acc + (p.currentStock || 0), 0);
+  const inStockCount = products.filter((p) => p.currentStock > p.minStockAlert).length;
+  const alertStockCount = products.filter((p) => p.currentStock > 0 && p.currentStock <= p.minStockAlert).length;
+  const outOfStockCount = products.filter((p) => p.currentStock <= 0).length;
+
+  // Création d'un article
   const handleCreateProduct = (e: React.FormEvent) => {
     e.preventDefault();
     const newProd: ProductRow = {
@@ -98,7 +135,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       salePriceHt: parseInt(salePriceHt, 10) || 0,
       costPrice: parseInt(costPrice, 10) || 0,
       taxGroup,
-      currentStock: 0,
+      currentStock: parseInt(initialStock, 10) || 0,
       minStockAlert: parseInt(minStockAlert, 10) || 5,
       hasTransactions: false,
     };
@@ -109,9 +146,11 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
     setCategory('Général');
     setSalePriceHt('');
     setCostPrice('');
+    setInitialStock('0');
     showToast(`Article "${newProd.name}" (${newProd.sku}) créé avec succès.`);
   };
 
+  // Édition d'un article
   const handleOpenEdit = (prod: ProductRow) => {
     setEditingProduct(prod);
     setEditSku(prod.sku);
@@ -151,13 +190,14 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
     showToast(`Article "${editingProduct.name}" mis à jour.`);
   };
 
+  // Suppression avec contrôles d'intégrité
   const handleDelete = (prod: ProductRow) => {
     if (prod.currentStock > 0) {
-      alert(`⚠️ Suppression impossible : l'article "${prod.name}" possède un stock physique de ${prod.currentStock} unités.`);
+      alert(`⚠️ Suppression impossible : l'article "${prod.name}" possède un stock physique restant de ${prod.currentStock} unités.`);
       return;
     }
     if (prod.hasTransactions) {
-      alert(`⚠️ Suppression impossible : l'article "${prod.name}" figure déjà sur des factures ou des mouvements d'achats/ventes.`);
+      alert(`⚠️ Suppression impossible : l'article "${prod.name}" figure déjà sur des factures ou des écritures comptables enregistrées.`);
       return;
     }
     if (confirm(`Confirmez-vous la suppression de l'article ${prod.sku} - ${prod.name} ?`)) {
@@ -166,6 +206,47 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
     }
   };
 
+  // Exportation au format PDF
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      const response = await fetch('/api/export/articles/pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          companyName: companyDisplayName,
+          companySlug,
+          products,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors du téléchargement du fichier PDF');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      const safeDate = new Date().toISOString().slice(0, 10);
+      link.download = `catalogue_articles_${companySlug}_${safeDate}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(link);
+
+      showToast('Catalogue des articles et stocks exporté en PDF avec succès.');
+    } catch (err) {
+      console.error(err);
+      alert("Une erreur est survenue lors de l'exportation du PDF. Veuillez réessayer.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Colonnes du tableau de gestion des articles
   const columns: ColumnDef<ProductRow>[] = [
     {
       id: 'sku',
@@ -176,7 +257,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
     },
     {
       id: 'name',
-      header: 'Désignation',
+      header: 'Désignation de l’article',
       accessorKey: 'name',
       sortable: true,
       cell: (row) => (
@@ -184,7 +265,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
           <div className="font-semibold text-gray-900 flex items-center gap-1.5">
             {row.name}
             {(row.currentStock > 0 || row.hasTransactions) && (
-              <span title="Opérations ou stock lié : référence verrouillée" className="text-gray-400">
+              <span title="Opérations ou stock lié : référence protégée" className="text-gray-400">
                 <Lock className="w-3.5 h-3.5 inline text-amber-500" />
               </span>
             )}
@@ -199,7 +280,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       accessorKey: 'salePriceHt',
       sortable: true,
       type: 'number',
-      cell: (row) => <span className="font-semibold text-blue-600">{formatFcfa(row.salePriceHt)}</span>,
+      cell: (row) => <span className="font-bold text-blue-600">{formatFcfa(row.salePriceHt)}</span>,
     },
     {
       id: 'costPrice',
@@ -214,6 +295,65 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
       ),
     },
     {
+      id: 'currentStock',
+      header: 'Quantité restante',
+      accessorKey: 'currentStock',
+      sortable: true,
+      type: 'number',
+      cell: (row) => {
+        const isOutOfStock = row.currentStock <= 0;
+        const isUnderMin = row.currentStock > 0 && row.currentStock <= row.minStockAlert;
+        return (
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`text-sm font-black ${
+                  isOutOfStock
+                    ? 'text-red-600'
+                    : isUnderMin
+                    ? 'text-amber-600'
+                    : 'text-emerald-700'
+                }`}
+              >
+                {row.currentStock} {row.currentStock > 1 ? 'unités' : 'unité'}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              Seuil alerte : <span className="font-medium text-gray-600">{row.minStockAlert}</span>
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'status',
+      header: 'Statut du stock',
+      cell: (row) => {
+        if (row.currentStock <= 0) {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+              Rupture de stock
+            </span>
+          );
+        }
+        if (row.currentStock <= row.minStockAlert) {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              Alerte stock bas
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            Stock disponible
+          </span>
+        );
+      },
+    },
+    {
       id: 'taxGroup',
       header: 'TVA e-MECeF',
       accessorKey: 'taxGroup',
@@ -222,33 +362,6 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
           Gr. {row.taxGroup} {row.taxGroup === 'B' ? '(18%)' : '(Exo)'}
         </Badge>
       ),
-    },
-    {
-      id: 'currentStock',
-      header: 'Stock actuel',
-      accessorKey: 'currentStock',
-      sortable: true,
-      type: 'number',
-      cell: (row) => {
-        const isOutOfStock = row.currentStock <= 0;
-        const isUnderMin = row.currentStock <= row.minStockAlert;
-        return (
-          <div className="flex items-center space-x-2">
-            <span
-              className={`font-bold ${
-                isOutOfStock ? 'text-red-600' : isUnderMin ? 'text-amber-600' : 'text-gray-900'
-              }`}
-            >
-              {row.currentStock}
-            </span>
-            {isOutOfStock ? (
-              <Badge variant="destructive">Rupture</Badge>
-            ) : isUnderMin ? (
-              <Badge variant="warning">Alerte</Badge>
-            ) : null}
-          </div>
-        );
-      },
     },
     {
       id: 'actions',
@@ -263,7 +376,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
                 type="button"
                 onClick={() => handleOpenEdit(row)}
                 className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center"
-                title="Modifier"
+                title="Modifier l'article"
                 aria-label="Modifier"
               >
                 <Pencil className="w-4 h-4" />
@@ -286,7 +399,7 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
                     ? 'text-gray-300 hover:text-red-500 hover:bg-red-50'
                     : 'text-red-600 hover:text-red-800 hover:bg-red-50'
                 }`}
-                title={isDeleteBlocked ? 'Suppression bloquée (stock ou écritures existantes)' : 'Supprimer'}
+                title={isDeleteBlocked ? 'Suppression bloquée (stock restant ou écritures comptables)' : 'Supprimer'}
                 aria-label="Supprimer"
               >
                 <Trash2 className="w-4 h-4" />
@@ -314,21 +427,89 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
         </div>
       )}
 
+      {/* En-tête de la page */}
       <div className="border-b border-gray-200 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Catalogue des Articles & Stock</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Articles & Stocks</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Gestion du référentiel d’articles, prix de vente HT, prix de revient et alertes de stock.
+            Gestion du catalogue de produits, suivi des quantités restantes en stock et seuils d'alerte.
           </p>
         </div>
-        <div className="flex items-center space-x-3">
-          <Button onClick={() => setShowAddModal(true)} className="flex items-center gap-1.5">
+        <div className="flex items-center flex-wrap gap-2.5">
+          {/* Bouton Exporter en PDF */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExportPdf}
+            disabled={isExporting}
+            className="flex items-center gap-2 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 shadow-sm"
+            title="Télécharger l'inventaire et le catalogue complet sous format PDF"
+          >
+            {isExporting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                <span>Génération du PDF...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 text-red-600" />
+                <span>Exporter en PDF</span>
+              </>
+            )}
+          </Button>
+
+          {/* Bouton Nouvel Article */}
+          <Button onClick={() => setShowAddModal(true)} className="flex items-center gap-1.5 shadow-sm">
             <Plus className="w-4 h-4" />
             Nouvel article
           </Button>
         </div>
       </div>
 
+      {/* Cartes KPI récapitulatives de stock */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <Package className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs text-gray-500 font-medium block">Articles au catalogue</span>
+            <span className="text-xl font-black text-gray-900">{totalArticles}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <Boxes className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs text-gray-500 font-medium block">Stock total restant</span>
+            <span className="text-xl font-black text-emerald-700">{totalStockUnits} unités</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs text-gray-500 font-medium block">Articles en alerte stock</span>
+            <span className="text-xl font-black text-amber-600">{alertStockCount}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+            <AlertCircle className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-xs text-gray-500 font-medium block">Articles en rupture</span>
+            <span className="text-xl font-black text-red-600">{outOfStockCount}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tableau des articles */}
       <DataTable columns={columns} data={products} />
 
       {/* MODAL 1 : AJOUT D'ARTICLE */}
@@ -346,11 +527,10 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
                   required
                 />
                 <Input
-                  label="Seuil d'alerte stock"
-                  type="number"
-                  placeholder="5"
-                  value={minStockAlert}
-                  onChange={(e) => setMinStockAlert(e.target.value)}
+                  label="Catégorie"
+                  placeholder="Ex: Fournitures, Informatique..."
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
                 />
               </div>
 
@@ -362,12 +542,22 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
                 required
               />
 
-              <Input
-                label="Catégorie"
-                placeholder="Ex: Fournitures, Informatique..."
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Quantité initiale en stock"
+                  type="number"
+                  placeholder="0"
+                  value={initialStock}
+                  onChange={(e) => setInitialStock(e.target.value)}
+                />
+                <Input
+                  label="Seuil d'alerte stock minimum"
+                  type="number"
+                  placeholder="5"
+                  value={minStockAlert}
+                  onChange={(e) => setMinStockAlert(e.target.value)}
+                />
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
@@ -432,11 +622,19 @@ export default function ArticlesPage({ params }: { params: { slug: string } }) {
               )}
             </div>
 
+            {/* Rappel clair du stock restant actuel */}
+            <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl flex items-center justify-between text-xs">
+              <span className="text-gray-600 font-medium">Stock restant actuellement disponible :</span>
+              <span className="font-black text-sm text-blue-700">
+                {editingProduct.currentStock} {editingProduct.currentStock > 1 ? 'unités' : 'unité'}
+              </span>
+            </div>
+
             {(editingProduct.currentStock > 0 || editingProduct.hasTransactions) && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <span>
-                  Cet article possède du stock physique ou figure sur des factures de vente/achat déjà validées. La <strong>référence (SKU)</strong> et la <strong>désignation</strong> sont verrouillées pour garantir l'exactitude de l'inventaire et des bilans.
+                  Cet article possède du stock physique ({editingProduct.currentStock} unités) ou figure sur des factures enregistrées. La <strong>référence (SKU)</strong> et la <strong>désignation</strong> sont verrouillées pour protéger la conformité légale.
                 </span>
               </div>
             )}
