@@ -21,6 +21,7 @@ import {
   Package,
   Truck,
   ArrowRight,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,8 @@ export interface InvoiceLineItem {
   totalLineTtc: number;
 }
 
+export type SalesDocType = 'INVOICE' | 'EXPORT' | 'PROFORMA' | 'CREDIT_NOTE';
+
 // Document de facture de vente / proforma
 export interface SalesRow extends Record<string, unknown> {
   id: string;
@@ -68,7 +71,7 @@ export interface SalesRow extends Record<string, unknown> {
   customerIfu?: string;
   customerPhone?: string;
   customerAddress?: string;
-  type: 'INVOICE' | 'PROFORMA' | 'CREDIT_NOTE';
+  type: SalesDocType;
   orderReference?: string;
   cashierName?: string;
   items: InvoiceLineItem[];
@@ -97,6 +100,16 @@ export interface SalesRow extends Record<string, unknown> {
   emecefCode?: string;
   emecefQrUrl?: string;
   fiscalizedAt?: string;
+}
+
+// Générateur automatique de numéro de document annuel selon les règles de facturation
+function generateDocNumber(type: 'INVOICE' | 'EXPORT', docList: SalesRow[]): string {
+  const currentYear = new Date().getFullYear();
+  const prefix = type === 'EXPORT' ? 'EXP' : 'FAC';
+  const prefixPattern = `${prefix}-${currentYear}`;
+  const yearDocs = docList.filter((d) => d.documentNumber.startsWith(prefixPattern));
+  const nextSeq = yearDocs.length + 1;
+  return `${prefix}-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
 }
 
 export default function SalesPage({ params }: { params: { slug: string } }) {
@@ -231,14 +244,14 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     },
     {
       id: 'doc_3',
-      documentNumber: 'PRO-2026-0001',
+      documentNumber: 'FAC-2026-0003',
       date: '15/10/2026',
       time: '14:20',
       customerId: 'cust_3',
       customerName: 'Jean-Baptiste ADANHO',
       customerIfu: 'Particulier',
       customerPhone: '+229 95 88 99 00',
-      type: 'PROFORMA',
+      type: 'INVOICE',
       cashierName: 'SSEBIO',
       items: [
         {
@@ -284,7 +297,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
   // ÉTAT DU MODAL : NOUVELLE VENTE / FACTURATION
   // ==========================================
   const [showInvoiceModal, setShowInvoiceModal] = React.useState(false);
-  const [docType, setDocType] = React.useState<'INVOICE' | 'PROFORMA'>('INVOICE');
+  const [docType, setDocType] = React.useState<'INVOICE' | 'EXPORT'>('INVOICE');
   const [docNumber, setDocNumber] = React.useState('');
   const [docDate, setDocDate] = React.useState('');
   const [orderReference, setOrderReference] = React.useState('');
@@ -351,8 +364,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
   // Ouverture du modal de création de facture
   const handleOpenNewInvoice = () => {
     const today = new Date().toISOString().slice(0, 10);
-    const prefix = docType === 'PROFORMA' ? 'PRO' : 'FAC';
-    setDocNumber(`${prefix}-2026-000${documents.length + 1}`);
+    const initialType: 'INVOICE' | 'EXPORT' = 'INVOICE';
+    setDocType(initialType);
+    setDocNumber(generateDocNumber(initialType, documents));
     setDocDate(today);
     setOrderReference('');
     if (!selectedCustomerId && customers.length > 0) {
@@ -425,8 +439,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     setInvoiceLines(invoiceLines.filter((l) => l.id !== lineId));
   };
 
-  // Sauvegarde de la facture (Brouillon ou Validée)
-  const handleSaveInvoice = (status: 'DRAFT' | 'VALIDATED') => {
+  // Sauvegarde de la facture (Brouillon, Validée, ou Validée & Normalisée e-MECeF)
+  const handleSaveInvoice = (status: 'DRAFT' | 'VALIDATED' | 'FISCALIZED') => {
     if (!currentSelectedCustomer) {
       alert('Veuillez choisir un client pour cette facture.');
       return;
@@ -447,6 +461,38 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       hour: '2-digit',
       minute: '2-digit',
     });
+
+    // Si validation ou normalisation immédiate : décrémenter le stock des articles
+    if (status === 'VALIDATED' || status === 'FISCALIZED') {
+      const updatedArticles = articles.map((art) => {
+        const line = invoiceLines.find((l) => l.articleId === art.id);
+        if (line) {
+          const nextStock = Math.max(0, art.currentStock - line.quantity);
+          return { ...art, currentStock: nextStock, hasTransactions: true };
+        }
+        return art;
+      });
+      setArticles(updatedArticles);
+      saveArticles(companySlug, updatedArticles);
+    }
+
+    // Si normalisation e-MECeF immédiate
+    let emecefNim: string | undefined;
+    let emecefCounters: string | undefined;
+    let emecefCode: string | undefined;
+    let emecefQrUrl: string | undefined;
+    let fiscalizedAt: string | undefined;
+
+    if (status === 'FISCALIZED') {
+      emecefNim = 'MCF01002026-AB1';
+      const tag = docType === 'EXPORT' ? 'EV' : 'FV';
+      const seq = documents.filter((d) => d.status === 'FISCALIZED').length + 1;
+      emecefCounters = `${seq}/${seq + 85} ${tag}`;
+      const randCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+      emecefCode = `EMCF-BJ-2026-${randCode}-V${docNumber.replace(/[^0-9]/g, '').slice(-3) || '001'}`;
+      emecefQrUrl = `https://emcf.dgi.bj/verify/${emecefCode}`;
+      fiscalizedAt = `${formattedDate} à ${formattedTime}`;
+    }
 
     const newDoc: SalesRow = {
       id: `doc_${Date.now()}`,
@@ -472,55 +518,47 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       totalTtc,
       netToPay,
       paymentMode,
-      paidAmount: status === 'VALIDATED' ? parsedPaidAmount : 0,
-      remainingAmount: status === 'VALIDATED' ? remainingDebt : netToPay,
+      paidAmount: status === 'DRAFT' ? 0 : parsedPaidAmount,
+      remainingAmount: status === 'DRAFT' ? netToPay : remainingDebt,
       receivedCash: parsedReceivedCash,
       changeDue,
       dueDate: paymentMode === 'A_TERME' ? (dueDateInput || '30 jours') : undefined,
       status,
+      emecefNim,
+      emecefCounters,
+      emecefCode,
+      emecefQrUrl,
+      fiscalizedAt,
     };
-
-    // Si validation de facture commerciale, décrémenter le stock des articles
-    if (status === 'VALIDATED' && docType === 'INVOICE') {
-      const updatedArticles = articles.map((art) => {
-        const line = invoiceLines.find((l) => l.articleId === art.id);
-        if (line) {
-          const nextStock = Math.max(0, art.currentStock - line.quantity);
-          return { ...art, currentStock: nextStock, hasTransactions: true };
-        }
-        return art;
-      });
-      setArticles(updatedArticles);
-      saveArticles(companySlug, updatedArticles);
-    }
 
     setDocuments([newDoc, ...documents]);
     setShowInvoiceModal(false);
 
-    showToast(
-      status === 'VALIDATED'
-        ? `Facture ${newDoc.documentNumber} validée avec succès. Sortie de stock effectuée.`
-        : `Brouillon ${newDoc.documentNumber} enregistré avec succès.`
-    );
+    if (status === 'FISCALIZED') {
+      showToast(`Facture ${newDoc.documentNumber} validée et normalisée e-MECeF avec succès ! Sortie de stock effectuée.`);
+      setViewingInvoice(newDoc);
+      setPreviewTab('INVOICE');
+    } else if (status === 'VALIDATED') {
+      showToast(`Facture ${newDoc.documentNumber} validée avec succès. Sortie de stock effectuée. Document disponible en Proforma.`);
+    } else {
+      showToast(`Brouillon ${newDoc.documentNumber} enregistré avec succès (Stock non déduit).`);
+    }
   };
 
-  // Normalisation e-MECeF de la DGI Bénin
+  // Normalisation e-MECeF de la DGI Bénin pour facture déjà validée
   const handleFiscalize = (docId: string) => {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
 
     const nim = 'MCF01002026-AB1';
-    const counter = `${Math.floor(Math.random() * 50) + 50}/${Math.floor(Math.random() * 200) + 150} FV`;
+    const tag = doc.type === 'EXPORT' ? 'EV' : 'FV';
+    const seq = documents.filter((d) => d.status === 'FISCALIZED').length + 1;
+    const counter = `${seq}/${seq + 85} ${tag}`;
     const randCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const emecefCode = `EMCF-BJ-2026-${randCode}-V${doc.id.slice(-3)}`;
+    const emecefCode = `EMCF-BJ-2026-${randCode}-V${doc.documentNumber.replace(/[^0-9]/g, '').slice(-3) || '001'}`;
     const qrUrl = `https://emcf.dgi.bj/verify/${emecefCode}`;
-    const now = new Date().toLocaleString('fr-BJ', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const now = new Date();
+    const fiscalizedAt = `${now.toLocaleDateString('fr-BJ')} à ${now.toLocaleTimeString('fr-BJ', { hour: '2-digit', minute: '2-digit' })}`;
 
     const updated = documents.map((d) => {
       if (d.id === docId) {
@@ -531,7 +569,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
           emecefCounters: counter,
           emecefCode,
           emecefQrUrl: qrUrl,
-          fiscalizedAt: now,
+          fiscalizedAt,
         };
       }
       return d;
@@ -548,8 +586,23 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     }
   };
 
-  // Validation d'un brouillon existant
+  // Validation d'un brouillon existant (Déduit le stock)
   const handleValidateExistingDraft = (docId: string) => {
+    const doc = documents.find((d) => d.id === docId);
+    if (!doc) return;
+
+    // Déduire le stock des articles
+    const updatedArticles = articles.map((art) => {
+      const line = doc.items.find((l) => l.articleId === art.id);
+      if (line) {
+        const nextStock = Math.max(0, art.currentStock - line.quantity);
+        return { ...art, currentStock: nextStock, hasTransactions: true };
+      }
+      return art;
+    });
+    setArticles(updatedArticles);
+    saveArticles(companySlug, updatedArticles);
+
     const updated = documents.map((d) => {
       if (d.id === docId) {
         return {
@@ -562,7 +615,68 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       return d;
     });
     setDocuments(updated);
-    showToast('Facture brouillon validée : Prête pour normalisation e-MECeF ou impression.');
+    showToast(`Facture ${doc.documentNumber} validée : Stock déduit. Document disponible en Proforma.`);
+  };
+
+  // Validation et normalisation directe d'un brouillon existant (Déduit le stock + normalise)
+  const handleValidateAndFiscalizeDraft = (docId: string) => {
+    const doc = documents.find((d) => d.id === docId);
+    if (!doc) return;
+
+    // Déduire le stock des articles
+    const updatedArticles = articles.map((art) => {
+      const line = doc.items.find((l) => l.articleId === art.id);
+      if (line) {
+        const nextStock = Math.max(0, art.currentStock - line.quantity);
+        return { ...art, currentStock: nextStock, hasTransactions: true };
+      }
+      return art;
+    });
+    setArticles(updatedArticles);
+    saveArticles(companySlug, updatedArticles);
+
+    const tag = doc.type === 'EXPORT' ? 'EV' : 'FV';
+    const seq = documents.filter((d) => d.status === 'FISCALIZED').length + 1;
+    const counter = `${seq}/${seq + 85} ${tag}`;
+    const randCode = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const emecefCode = `EMCF-BJ-2026-${randCode}-V${doc.documentNumber.replace(/[^0-9]/g, '').slice(-3) || '001'}`;
+    const qrUrl = `https://emcf.dgi.bj/verify/${emecefCode}`;
+    const now = new Date();
+    const fiscalizedAt = `${now.toLocaleDateString('fr-BJ')} à ${now.toLocaleTimeString('fr-BJ', { hour: '2-digit', minute: '2-digit' })}`;
+
+    const updated = documents.map((d) => {
+      if (d.id === docId) {
+        return {
+          ...d,
+          status: 'FISCALIZED' as const,
+          paidAmount: d.paymentMode === 'A_TERME' ? 0 : d.netToPay,
+          remainingAmount: d.paymentMode === 'A_TERME' ? d.netToPay : 0,
+          emecefNim: 'MCF01002026-AB1',
+          emecefCounters: counter,
+          emecefCode,
+          emecefQrUrl: qrUrl,
+          fiscalizedAt,
+        };
+      }
+      return d;
+    });
+    setDocuments(updated);
+    showToast(`Facture ${doc.documentNumber} validée et normalisée e-MECeF ! Stock déduit.`);
+
+    const fiscalizedDoc = updated.find((d) => d.id === docId);
+    if (fiscalizedDoc) {
+      setViewingInvoice(fiscalizedDoc);
+      setPreviewTab('INVOICE');
+    }
+  };
+
+  // Suppression d'un brouillon
+  const handleDeleteDraft = (docId: string) => {
+    const doc = documents.find((d) => d.id === docId);
+    if (!doc) return;
+    if (!confirm(`Supprimer définitivement le brouillon ${doc.documentNumber} ?`)) return;
+    setDocuments(documents.filter((d) => d.id !== docId));
+    showToast(`Brouillon ${doc.documentNumber} supprimé.`);
   };
 
   // Enregistrement rapide d'un nouveau client
@@ -637,11 +751,27 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       id: 'type',
       header: 'Type',
       accessorKey: 'type',
-      cell: (row) => (
-        <Badge variant={row.type === 'INVOICE' ? 'default' : 'secondary'}>
-          {row.type === 'INVOICE' ? 'Facture de vente' : 'Facture Proforma'}
-        </Badge>
-      ),
+      cell: (row) => {
+        if (row.type === 'EXPORT') {
+          return (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+              Facture d'exportation
+            </span>
+          );
+        }
+        if (row.type === 'INVOICE') {
+          return (
+            <Badge variant="default" className="text-xs">
+              Facture de vente
+            </Badge>
+          );
+        }
+        return (
+          <Badge variant="secondary" className="text-xs">
+            Facture Proforma
+          </Badge>
+        );
+      },
     },
     {
       id: 'netToPay',
@@ -664,24 +794,16 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
             </span>
           );
         }
-        if (row.type === 'PROFORMA') {
-          return (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-              <FileText className="w-3.5 h-3.5 text-blue-600" />
-              Proforma (Devis)
-            </span>
-          );
-        }
         if (row.status === 'VALIDATED') {
           return (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-              <Check className="w-3.5 h-3.5 text-amber-600" />
-              Validée
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Facture validée avec sortie de stock. Titre sur document: Facture Proforma">
+              <FileText className="w-3.5 h-3.5 text-amber-600" />
+              Proforma (validée)
             </span>
           );
         }
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200" title="Brouillon en attente de validation. Stock non déduit">
             Brouillon
           </span>
         );
@@ -703,44 +825,97 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       header: 'Actions',
       cell: (row) => (
         <div className="flex items-center gap-1.5">
-          {/* Si brouillon : bouton Valider */}
+          {/* Si brouillon : bouton Valider et Valider & Normaliser */}
           {row.status === 'DRAFT' && (
-            <Button
-              size="sm"
-              onClick={() => handleValidateExistingDraft(row.id)}
-              className="text-xs h-8 px-2.5 bg-blue-600 hover:bg-blue-700"
-            >
-              Valider
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onClick={() => handleValidateExistingDraft(row.id)}
+                className="text-xs h-7 px-2 bg-blue-600 hover:bg-blue-700"
+                title="Valider la facture (déduit le stock, titre: Proforma)"
+              >
+                Valider
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleValidateAndFiscalizeDraft(row.id)}
+                className="text-xs h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 shadow-sm"
+                title="Valider et certifier e-MECeF immédiatement"
+              >
+                <ShieldCheck className="w-3 h-3" />
+                Normaliser
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleDeleteDraft(row.id)}
+                className="text-xs h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                title="Supprimer ce brouillon"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </>
           )}
 
-          {/* Si validée : bouton Normaliser e-MECeF */}
+          {/* Si validée non normalisée : bouton Normaliser e-MECeF et Aperçu Proforma */}
           {row.status === 'VALIDATED' && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleFiscalize(row.id)}
-              className="text-xs h-8 px-2.5 border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-bold flex items-center gap-1"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              Normaliser e-MECeF
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onClick={() => handleFiscalize(row.id)}
+                className="text-xs h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 shadow-sm"
+                title="Certifier et normaliser avec l'e-MECeF DGI Bénin"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Normaliser e-MECeF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setViewingInvoice(row);
+                  setPreviewTab('INVOICE');
+                }}
+                className="text-xs h-7 px-2 text-amber-800 border-amber-300 hover:bg-amber-50 flex items-center gap-1"
+                title="Aperçu du document Proforma"
+              >
+                <FileText className="w-3.5 h-3.5 text-amber-600" />
+                <span>Aperçu Proforma</span>
+              </Button>
+            </>
           )}
 
-          {/* Bouton Aperçu / Imprimer */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setViewingInvoice(row);
-              setPreviewTab('INVOICE');
-            }}
-            className="text-xs h-8 px-2.5 text-gray-700 hover:bg-gray-100 flex items-center gap-1"
-            title="Voir l'aperçu imprimable (Facture A4, Ticket, Bordereau)"
-          >
-            <Eye className="w-3.5 h-3.5 text-blue-600" />
-            <span className="hidden sm:inline">Aperçu / Imprimer</span>
-          </Button>
+          {/* Si normalisée e-MECeF : Facture A4 et Ticket */}
+          {row.status === 'FISCALIZED' && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setViewingInvoice(row);
+                  setPreviewTab('INVOICE');
+                }}
+                className="text-xs h-7 px-2 text-blue-700 border-blue-300 hover:bg-blue-50 flex items-center gap-1 font-semibold"
+                title="Facture officielle A4 normalisée e-MECeF"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span>Facture A4</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setViewingInvoice(row);
+                  setPreviewTab('RECEIPT');
+                }}
+                className="text-xs h-7 px-2 text-gray-700 hover:bg-gray-100 flex items-center gap-1"
+                title="Ticket de caisse thermique 80mm"
+              >
+                <Receipt className="w-3.5 h-3.5 text-gray-600" />
+                <span>Ticket</span>
+              </Button>
+            </>
+          )}
         </div>
       ),
     },
@@ -819,13 +994,19 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
               {/* Ligne 1 : Numéro Facture, Date, Utilisateur, Type de facture, BC */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-3 bg-gray-50/80 rounded-xl border border-gray-200 text-xs">
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1">N° Document</label>
-                  <input
-                    type="text"
-                    value={docNumber}
-                    onChange={(e) => setDocNumber(e.target.value)}
-                    className="w-full h-9 px-2.5 border border-gray-300 rounded-md bg-white font-mono font-bold text-gray-900"
-                  />
+                  <label className="font-bold text-gray-700 block mb-1">N° Document (Automatique)</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={docNumber}
+                      readOnly
+                      disabled
+                      className="w-full h-9 px-2.5 pl-8 border border-gray-300 rounded-md bg-gray-100 font-mono font-bold text-gray-800 cursor-not-allowed select-none shadow-inner"
+                      title="Numéro généré automatiquement selon le compteur annuel légal"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <span className="text-[10px] text-gray-400 mt-0.5 block">Automatique (non modifiable)</span>
                 </div>
 
                 <div>
@@ -849,14 +1030,18 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 </div>
 
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1">Type de facture</label>
+                  <label className="font-bold text-gray-700 block mb-1">Type de facture *</label>
                   <select
                     value={docType}
-                    onChange={(e) => setDocType(e.target.value as 'INVOICE' | 'PROFORMA')}
-                    className="w-full h-9 px-2.5 border border-gray-300 rounded-md bg-white font-semibold text-gray-900"
+                    onChange={(e) => {
+                      const newType = e.target.value as 'INVOICE' | 'EXPORT';
+                      setDocType(newType);
+                      setDocNumber(generateDocNumber(newType, documents));
+                    }}
+                    className="w-full h-9 px-2.5 border border-gray-300 rounded-md bg-white font-semibold text-gray-900 focus:ring-1 focus:ring-blue-500"
                   >
-                    <option value="INVOICE">Facture de vente (Impact stock)</option>
-                    <option value="PROFORMA">Facture Proforma (Devis estimatif)</option>
+                    <option value="INVOICE">Facture de vente</option>
+                    <option value="EXPORT">Facture d'exportation</option>
                   </select>
                 </div>
 
@@ -1150,7 +1335,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       className="w-full h-9 px-2.5 border border-gray-300 rounded-md bg-white font-semibold text-gray-900"
                     >
                       <option value="ESPECES">Espèces (Guichet)</option>
-                      <option value="MOBILE_MONEY">Mobile Money (MTN MoMo / Moov)</option>
+                      <option value="MOBILE_MONEY">Mobile Money (MTN MoMo, Moov, Celtiis)</option>
                       <option value="CHEQUE">Chèque bancaire</option>
                       <option value="VIREMENT">Virement bancaire</option>
                       <option value="A_TERME">À terme (Crédit / Facture échue)</option>
@@ -1218,33 +1403,49 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
             {/* Pied du modal avec actions de sauvegarde */}
             <div className="pt-3 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
               <div className="text-xs text-gray-500">
-                Total articles : <strong>{invoiceLines.length}</strong> • Total TTC : <strong className="text-blue-700">{formatFcfa(netToPay)}</strong>
+                Total articles : <strong>{invoiceLines.length}</strong> • Net à payer : <strong className="text-blue-700 text-sm font-mono">{formatFcfa(netToPay)}</strong>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setShowInvoiceModal(false)}
+                  className="text-xs"
                 >
                   Annuler
                 </Button>
 
+                {/* Bouton 1 : Enregistrer comme brouillon */}
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => handleSaveInvoice('DRAFT')}
-                  className="font-semibold"
+                  className="text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300"
+                  title="Enregistre la facture en brouillon. Le stock physique ne sera pas déduit."
                 >
-                  Enregistrer brouillon
+                  Enregistrer comme brouillon
                 </Button>
 
+                {/* Bouton 2 : Valider la facture */}
                 <Button
                   type="button"
                   onClick={() => handleSaveInvoice('VALIDATED')}
-                  className="bg-blue-600 hover:bg-blue-700 font-bold"
+                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                  title="Valide la facture et déduit les articles du stock. Titre sur document: FACTURE PROFORMA."
                 >
                   Valider la facture
+                </Button>
+
+                {/* Bouton 3 : Valider & Normaliser e-MECeF */}
+                <Button
+                  type="button"
+                  onClick={() => handleSaveInvoice('FISCALIZED')}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-sm"
+                  title="Valide la vente, déduit le stock et certifie immédiatement la facture avec l'e-MECeF DGI Bénin. Titre sur document: FACTURE DE VENTE."
+                >
+                  <ShieldCheck className="w-4 h-4 text-white" />
+                  Valider & Normaliser e-MECeF
                 </Button>
               </div>
             </div>
@@ -1442,13 +1643,44 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                     </div>
 
                     <div className="text-right">
-                      <span className="text-base font-black text-gray-900 block">
-                        {viewingInvoice.type === 'PROFORMA' ? 'FACTURE PROFORMA' : 'FACTURE DE VENTE'}
+                      <span className="text-base font-black text-gray-900 block tracking-wide">
+                        {viewingInvoice.status === 'FISCALIZED'
+                          ? viewingInvoice.type === 'EXPORT'
+                            ? "FACTURE D'EXPORTATION"
+                            : 'FACTURE DE VENTE'
+                          : viewingInvoice.status === 'VALIDATED'
+                          ? 'FACTURE PROFORMA'
+                          : 'PROJET DE FACTURE (BROUILLON)'}
                       </span>
                       <span className="font-mono font-bold text-sm text-blue-700 block">
                         N° {viewingInvoice.documentNumber}
                       </span>
-                      <span className="text-gray-500 text-[11px]">Date : {viewingInvoice.date}</span>
+                      <span className="text-gray-500 text-[11px]">
+                        Date : {viewingInvoice.date} {viewingInvoice.time ? `à ${viewingInvoice.time}` : ''}
+                      </span>
+                      {viewingInvoice.status === 'FISCALIZED' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            ORIGINALE NORMALISÉE e-MECeF
+                          </span>
+                        </div>
+                      )}
+                      {viewingInvoice.status === 'VALIDATED' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold">
+                            <FileText className="w-3 h-3 text-amber-600" />
+                            DOCUMENT PROFORMA (NON FISCALISÉ)
+                          </span>
+                        </div>
+                      )}
+                      {viewingInvoice.status === 'DRAFT' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-300 text-[10px] font-bold">
+                            BROUILLON (NON DÉDUIT)
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1467,7 +1699,17 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
                         Règlement & Référence
                       </span>
-                      <p className="text-gray-700">Mode : <strong>{viewingInvoice.paymentMode}</strong></p>
+                      <p className="text-gray-700">
+                        Mode : <strong>
+                          {viewingInvoice.paymentMode === 'MOBILE_MONEY'
+                            ? 'Mobile Money (MTN / Moov / Celtiis)'
+                            : viewingInvoice.paymentMode === 'ESPECES'
+                            ? 'Espèces (Guichet)'
+                            : viewingInvoice.paymentMode === 'A_TERME'
+                            ? 'À terme'
+                            : viewingInvoice.paymentMode}
+                        </strong>
+                      </p>
                       {viewingInvoice.orderReference && (
                         <p className="text-gray-700">Bon de commande : <strong>{viewingInvoice.orderReference}</strong></p>
                       )}
@@ -1512,14 +1754,22 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                         <div className="text-[11px] text-gray-700 space-y-0.5">
                           <p>NIM : <strong className="font-mono">{viewingInvoice.emecefNim}</strong></p>
                           <p>Compteurs : <strong className="font-mono">{viewingInvoice.emecefCounters}</strong></p>
-                          <p>Code e-MECeF : <strong className="font-mono text-emerald-800">{viewingInvoice.emecefCode}</strong></p>
-                          <p className="text-[10px] text-emerald-700 font-semibold pt-1">
-                            ✓ Facture normalisée certifiée par la DGI Bénin
+                          <p>Code e-MECeF : <strong className="font-mono text-emerald-800 font-bold">{viewingInvoice.emecefCode}</strong></p>
+                          <p className="text-[10px] text-emerald-700 font-semibold pt-1 flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            ✓ Facture originale normalisée et certifiée par la DGI Bénin
+                          </p>
+                        </div>
+                      ) : viewingInvoice.status === 'VALIDATED' ? (
+                        <div className="text-[11px] text-amber-900 space-y-0.5">
+                          <p className="font-semibold">Document Proforma validé (Sortie de stock enregistrée).</p>
+                          <p className="text-[10px] text-gray-600">
+                            Conformément à la réglementation de la DGI Bénin, ce document n'est pas encore certifié e-MECeF et porte obligatoirement la mention Proforma jusqu'à sa fiscalisation définitive.
                           </p>
                         </div>
                       ) : (
                         <p className="text-[11px] text-gray-500 italic">
-                          Facture validée non encore normalisée avec l'e-MECeF DGI.
+                          Projet de facture en brouillon. Le stock physique n'a pas été défalqué.
                         </p>
                       )}
                     </div>
@@ -1557,6 +1807,13 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                     <p className="text-[10px] text-gray-600">BOUTIQUE CENTRALE - COTONOU</p>
                     <p className="text-[10px] text-gray-600">IFU : 0202612345678</p>
                     <p className="text-[10px] text-gray-600">TEL : +229 97 00 00 00</p>
+                    <span className="inline-block mt-1 font-bold text-[10px] px-2 py-0.5 bg-gray-100 rounded">
+                      {viewingInvoice.status === 'FISCALIZED'
+                        ? (viewingInvoice.type === 'EXPORT' ? 'TICKET VENTE EXPORT' : 'TICKET DE VENTE NORMALISÉ')
+                        : viewingInvoice.status === 'VALIDATED'
+                        ? 'TICKET PROFORMA'
+                        : 'TICKET BROUILLON'}
+                    </span>
                   </div>
 
                   <div className="text-[10px] space-y-0.5 border-b pb-2">
@@ -1605,7 +1862,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
 
                   {/* Règlement ticket */}
                   <div className="space-y-0.5 text-[10px] border-b pb-2">
-                    <p>Mode : {viewingInvoice.paymentMode}</p>
+                    <p>
+                      Mode : {viewingInvoice.paymentMode === 'MOBILE_MONEY' ? 'Mobile Money (MTN/Moov/Celtiis)' : viewingInvoice.paymentMode}
+                    </p>
                     {viewingInvoice.receivedCash && viewingInvoice.receivedCash > 0 && (
                       <>
                         <p>Espèces Reçus : {formatFcfa(viewingInvoice.receivedCash)}</p>
@@ -1618,12 +1877,14 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   <div className="text-center text-[9px] text-gray-500 pt-1 space-y-0.5">
                     {viewingInvoice.status === 'FISCALIZED' ? (
                       <>
-                        <p className="font-bold text-gray-800">e-MECeF / DGI BENIN</p>
-                        <p className="font-mono">{viewingInvoice.emecefCode}</p>
-                        <p className="text-emerald-700 font-bold">FACTURE NORMALISÉE</p>
+                        <p className="font-bold text-gray-800">e-MECeF / DGI BÉNIN</p>
+                        <p className="font-mono font-bold text-emerald-800">{viewingInvoice.emecefCode}</p>
+                        <p className="text-emerald-700 font-bold">FACTURE NORMALISÉE CERTIFIÉE</p>
                       </>
+                    ) : viewingInvoice.status === 'VALIDATED' ? (
+                      <p className="font-bold text-amber-800">TICKET PROFORMA (NON CERTIFIÉ DGI)</p>
                     ) : (
-                      <p>DOCUMENT VALIDE POUR CAISSE</p>
+                      <p className="text-gray-400">PROJET BROUILLON</p>
                     )}
                     <p className="pt-1">MERCI DE VOTRE CONFIANCE !</p>
                   </div>
