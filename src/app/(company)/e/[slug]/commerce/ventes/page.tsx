@@ -41,89 +41,29 @@ import {
   DEFAULT_ARTICLES,
   ArticleItem,
 } from '@/lib/articles-store';
-
-// Ligne d'article dans une facture
-export interface InvoiceLineItem {
-  id: string;
-  articleId: string;
-  sku: string;
-  name: string;
-  taxGroup: 'A' | 'B' | 'C' | 'D';
-  quantity: number;
-  unitPriceHt: number;
-  unitPriceTtc: number;
-  unitDiscount: number;
-  specificTax: number;
-  totalLineHt: number;
-  totalLineVat: number;
-  totalLineTtc: number;
-}
-
-export type SalesDocType = 'INVOICE' | 'EXPORT' | 'PROFORMA' | 'CREDIT_NOTE';
-
-// Document de facture de vente / proforma
-export interface SalesRow extends Record<string, unknown> {
-  id: string;
-  documentNumber: string;
-  date: string;
-  time?: string;
-  customerId: string;
-  customerName: string;
-  customerIfu?: string;
-  customerPhone?: string;
-  customerAddress?: string;
-  type: SalesDocType;
-  orderReference?: string;
-  cashierName?: string;
-  items: InvoiceLineItem[];
-  // Totaux financiers
-  totalGrossHt: number;
-  discountAmount: number;
-  totalNetHt: number;
-  totalVat: number;
-  specificTaxTotal: number;
-  aibRate: 0 | 1 | 5;
-  aibAmount: number;
-  totalTtc: number;
-  netToPay: number;
-  // Règlement
-  paymentMode: 'ESPECES' | 'MOBILE_MONEY' | 'CHEQUE' | 'VIREMENT' | 'A_TERME';
-  paidAmount: number;
-  remainingAmount: number;
-  receivedCash?: number;
-  changeDue?: number;
-  dueDate?: string;
-  // Statut
-  status: 'DRAFT' | 'VALIDATED' | 'FISCALIZED';
-  // Normalisation e-MECeF Bénin
-  emecefNim?: string;
-  emecefCounters?: string;
-  emecefCode?: string;
-  emecefQrUrl?: string;
-  fiscalizedAt?: string;
-}
-
-// Générateur automatique de numéro de document annuel selon les règles de facturation
-function generateDocNumber(type: 'INVOICE' | 'EXPORT', docList: SalesRow[]): string {
-  const currentYear = new Date().getFullYear();
-  const prefix = type === 'EXPORT' ? 'EXP' : 'FAC';
-  const prefixPattern = `${prefix}-${currentYear}`;
-  const yearDocs = docList.filter((d) => d.documentNumber.startsWith(prefixPattern));
-  const nextSeq = yearDocs.length + 1;
-  return `${prefix}-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
-}
+import {
+  loadSalesDocuments,
+  saveSalesDocuments,
+  DEFAULT_DOCUMENTS,
+  generateDocNumber,
+  SalesRow,
+  InvoiceLineItem,
+  SalesDocType,
+} from '@/lib/sales-store';
 
 export default function SalesPage({ params }: { params: { slug: string } }) {
   const companySlug = params.slug;
   const companyDisplayName = companySlug.replace(/-/g, ' ').toUpperCase();
 
-  // Chargement des référentiels partagés (Clients & Articles)
+  // Chargement des référentiels partagés (Clients, Articles & Factures / Brouillons)
   const [customers, setCustomers] = React.useState<CustomerItem[]>(DEFAULT_CUSTOMERS);
   const [articles, setArticles] = React.useState<ArticleItem[]>(DEFAULT_ARTICLES);
+  const [documents, setDocuments] = React.useState<SalesRow[]>(DEFAULT_DOCUMENTS);
 
   React.useEffect(() => {
     setCustomers(loadCustomers(companySlug));
     setArticles(loadArticles(companySlug));
+    setDocuments(loadSalesDocuments(companySlug));
 
     const handleCustSync = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -139,153 +79,23 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       }
     };
 
+    const handleSalesSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.companySlug === companySlug && customEvent.detail?.documents) {
+        setDocuments(customEvent.detail.documents);
+      }
+    };
+
     window.addEventListener('lgv_customers_changed', handleCustSync);
     window.addEventListener('lgv_articles_changed', handleArtSync);
+    window.addEventListener('lgv_sales_changed', handleSalesSync);
 
     return () => {
       window.removeEventListener('lgv_customers_changed', handleCustSync);
       window.removeEventListener('lgv_articles_changed', handleArtSync);
+      window.removeEventListener('lgv_sales_changed', handleSalesSync);
     };
   }, [companySlug]);
-
-  // Liste initiale des factures
-  const [documents, setDocuments] = React.useState<SalesRow[]>([
-    {
-      id: 'doc_1',
-      documentNumber: 'FAC-2026-0001',
-      date: '15/10/2026',
-      time: '10:30',
-      customerId: 'cust_1',
-      customerName: 'Société Béninoise d’Import-Export',
-      customerIfu: '0202611111111',
-      customerPhone: '+229 97 22 33 44',
-      customerAddress: 'Zone Industrielle Akpakpa, Cotonou',
-      type: 'INVOICE',
-      orderReference: 'BC-2026-44',
-      cashierName: 'SSEBIO',
-      items: [
-        {
-          id: 'item_1',
-          articleId: 'prod_1',
-          sku: 'RAM-A4-80G',
-          name: 'Rame de papier A4 80g Double A',
-          taxGroup: 'B',
-          quantity: 100,
-          unitPriceHt: 3500,
-          unitPriceTtc: 4130,
-          unitDiscount: 0,
-          specificTax: 0,
-          totalLineHt: 350000,
-          totalLineVat: 63000,
-          totalLineTtc: 413000,
-        },
-      ],
-      totalGrossHt: 350000,
-      discountAmount: 0,
-      totalNetHt: 350000,
-      totalVat: 63000,
-      specificTaxTotal: 0,
-      aibRate: 1,
-      aibAmount: 3500,
-      totalTtc: 413000,
-      netToPay: 416500,
-      paymentMode: 'ESPECES',
-      paidAmount: 416500,
-      remainingAmount: 0,
-      status: 'FISCALIZED',
-      emecefNim: 'MCF01002026-AB1',
-      emecefCounters: '42/189 FV',
-      emecefCode: 'EMCF-BJ-2026-X89K2-M37',
-      emecefQrUrl: 'https://emcf.dgi.bj/verify/EMCF-BJ-2026-X89K2-M37',
-      fiscalizedAt: '15/10/2026 10:31',
-    },
-    {
-      id: 'doc_2',
-      documentNumber: 'FAC-2026-0002',
-      date: '15/10/2026',
-      time: '11:45',
-      customerId: 'cust_2',
-      customerName: 'Établissements Alafia & Fils',
-      customerIfu: '0202622222222',
-      customerPhone: '+229 96 55 66 77',
-      type: 'INVOICE',
-      orderReference: 'BC-ALAFIA-09',
-      cashierName: 'SSEBIO',
-      items: [
-        {
-          id: 'item_2',
-          articleId: 'prod_2',
-          sku: 'TONER-HP-05A',
-          name: 'Cartouche de Toner HP LaserJet 05A Noir',
-          taxGroup: 'B',
-          quantity: 4,
-          unitPriceHt: 45000,
-          unitPriceTtc: 53100,
-          unitDiscount: 0,
-          specificTax: 0,
-          totalLineHt: 180000,
-          totalLineVat: 32400,
-          totalLineTtc: 212400,
-        },
-      ],
-      totalGrossHt: 180000,
-      discountAmount: 0,
-      totalNetHt: 180000,
-      totalVat: 32400,
-      specificTaxTotal: 0,
-      aibRate: 1,
-      aibAmount: 1800,
-      totalTtc: 212400,
-      netToPay: 214200,
-      paymentMode: 'A_TERME',
-      paidAmount: 0,
-      remainingAmount: 214200,
-      dueDate: '15/11/2026',
-      status: 'VALIDATED',
-    },
-    {
-      id: 'doc_3',
-      documentNumber: 'FAC-2026-0003',
-      date: '15/10/2026',
-      time: '14:20',
-      customerId: 'cust_3',
-      customerName: 'Jean-Baptiste ADANHO',
-      customerIfu: 'Particulier',
-      customerPhone: '+229 95 88 99 00',
-      type: 'INVOICE',
-      cashierName: 'SSEBIO',
-      items: [
-        {
-          id: 'item_3',
-          articleId: 'prod_4',
-          sku: 'SOURIS-LOGI-M185',
-          name: 'Souris Optique Sans Fil Logitech M185',
-          taxGroup: 'B',
-          quantity: 5,
-          unitPriceHt: 8500,
-          unitPriceTtc: 10030,
-          unitDiscount: 0,
-          specificTax: 0,
-          totalLineHt: 42500,
-          totalLineVat: 7650,
-          totalLineTtc: 50150,
-        },
-      ],
-      totalGrossHt: 42500,
-      discountAmount: 0,
-      totalNetHt: 42500,
-      totalVat: 7650,
-      specificTaxTotal: 0,
-      aibRate: 0,
-      aibAmount: 0,
-      totalTtc: 50150,
-      netToPay: 50150,
-      paymentMode: 'ESPECES',
-      paidAmount: 0,
-      remainingAmount: 50150,
-      status: 'DRAFT',
-    },
-  ]);
 
   // Notifications Toast
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
@@ -370,7 +180,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     const today = new Date().toISOString().slice(0, 10);
     const initialType: 'INVOICE' | 'EXPORT' = 'INVOICE';
     setDocType(initialType);
-    setDocNumber(generateDocNumber(initialType, documents));
+    const latestDocs = loadSalesDocuments(companySlug);
+    setDocuments(latestDocs);
+    setDocNumber(generateDocNumber(initialType, latestDocs));
     setDocDate(today);
     setOrderReference('');
     if (!selectedCustomerId && customers.length > 0) {
@@ -559,7 +371,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
         fiscalizedAt,
       };
 
-      setDocuments(documents.map((d) => (d.id === editingDocId ? updatedDoc : d)));
+      const updatedDocs = documents.map((d) => (d.id === editingDocId ? updatedDoc : d));
+      setDocuments(updatedDocs);
+      saveSalesDocuments(companySlug, updatedDocs);
       setShowInvoiceModal(false);
       setEditingDocId(null);
 
@@ -612,7 +426,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       fiscalizedAt,
     };
 
-    setDocuments([newDoc, ...documents]);
+    const nextDocuments = [newDoc, ...documents];
+    setDocuments(nextDocuments);
+    saveSalesDocuments(companySlug, nextDocuments);
     setShowInvoiceModal(false);
 
     if (status === 'FISCALIZED') {
@@ -657,6 +473,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     });
 
     setDocuments(updated);
+    saveSalesDocuments(companySlug, updated);
     showToast(`Facture ${doc.documentNumber} certifiée & normalisée e-MECeF avec succès !`);
 
     // Ouvrir directement l'aperçu officiel certifié
@@ -696,6 +513,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       return d;
     });
     setDocuments(updated);
+    saveSalesDocuments(companySlug, updated);
     showToast(`Facture ${doc.documentNumber} validée : Stock déduit. Document disponible en Proforma.`);
   };
 
@@ -742,6 +560,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       return d;
     });
     setDocuments(updated);
+    saveSalesDocuments(companySlug, updated);
     showToast(`Facture ${doc.documentNumber} validée et normalisée e-MECeF ! Stock déduit.`);
 
     const fiscalizedDoc = updated.find((d) => d.id === docId);
@@ -756,7 +575,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
     if (!confirm(`Supprimer définitivement le brouillon ${doc.documentNumber} ?`)) return;
-    setDocuments(documents.filter((d) => d.id !== docId));
+    const nextDocuments = documents.filter((d) => d.id !== docId);
+    setDocuments(nextDocuments);
+    saveSalesDocuments(companySlug, nextDocuments);
     showToast(`Brouillon ${doc.documentNumber} supprimé.`);
   };
 
@@ -906,7 +727,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       header: 'Actions',
       cell: (row) => (
         <div className="flex items-center gap-1.5">
-          {/* Si brouillon : boutons Modifier, Valider, Normaliser et Supprimer */}
+          {/* Si brouillon : boutons Modifier, Aperçu, Valider, Normaliser et Supprimer */}
           {row.status === 'DRAFT' && (
             <>
               <Button
@@ -921,9 +742,22 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
               </Button>
               <Button
                 size="sm"
+                variant="outline"
+                onClick={() => {
+                  setViewingInvoice(row);
+                  setPreviewTab('INVOICE');
+                }}
+                className="text-xs h-7 px-2 text-gray-700 border-gray-300 hover:bg-gray-50 flex items-center gap-1"
+                title="Aperçu du brouillon"
+              >
+                <Eye className="w-3 h-3 text-gray-500" />
+                <span>Aperçu</span>
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => handleValidateExistingDraft(row.id)}
-                className="text-xs h-7 px-2 bg-blue-600 hover:bg-blue-700"
-                title="Valider la facture (déduit le stock, titre: Proforma)"
+                className="text-xs h-7 px-2 bg-blue-600 hover:bg-blue-700 font-semibold"
+                title="Valider la facture (déduit le stock, titre: Facture Proforma)"
               >
                 Valider
               </Button>
@@ -1786,7 +1620,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                           ? viewingInvoice.type === 'EXPORT'
                             ? "FACTURE D'EXPORTATION"
                             : 'FACTURE DE VENTE'
-                          : 'FACTURE PROFORMA'}
+                          : viewingInvoice.status === 'VALIDATED'
+                          ? 'FACTURE PROFORMA'
+                          : 'FACTURE BROUILLON'}
                       </span>
                       <span className="font-mono font-bold text-sm text-blue-700 block">
                         N° {viewingInvoice.documentNumber}
@@ -1799,6 +1635,13 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
                             <ShieldCheck className="w-3 h-3 text-emerald-600" />
                             ORIGINALE NORMALISÉE e-MECeF
+                          </span>
+                        </div>
+                      )}
+                      {viewingInvoice.status === 'DRAFT' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-300 text-[10px] font-bold">
+                            BROUILLON (STOCK NON DÉDUIT)
                           </span>
                         </div>
                       )}
