@@ -221,8 +221,16 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
 
   // Ajout d'une ligne d'article dans la facture
   const handleAddLine = () => {
-    if (!currentSelectedArticle) {
+    if (!selectedArticleId || !currentSelectedArticle) {
       alert('Veuillez sélectionner un article dans la liste.');
+      return;
+    }
+
+    // Contrôle : article épuisé en stock (stock nul)
+    if (currentSelectedArticle.currentStock <= 0) {
+      alert(
+        `⚠️ Impossible d'ajouter cet article :\n\nL'article « ${currentSelectedArticle.name} » est actuellement épuisé (stock disponible : 0 unité).\nVous devez d'abord réapprovisionner cet article en stock avant de pouvoir l'ajouter à la vente.`
+      );
       return;
     }
 
@@ -232,12 +240,12 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       return;
     }
 
-    // Avertissement si le stock physique est insuffisant
-    if (docType === 'INVOICE' && qty > currentSelectedArticle.currentStock) {
-      const confirmExceed = confirm(
-        `⚠️ Stock insuffisant : Vous commandez ${qty} unités alors qu'il ne reste que ${currentSelectedArticle.currentStock} unités en magasin.\nSouhaitez-vous quand même ajouter cet article ?`
+    // Contrôle : stock disponible insuffisant pour la quantité demandée
+    if (qty > currentSelectedArticle.currentStock) {
+      alert(
+        `⚠️ Stock insuffisant :\n\nVous demandez ${qty} unité(s) alors qu'il ne reste que ${currentSelectedArticle.currentStock} unité(s) disponible(s) en magasin pour « ${currentSelectedArticle.name} ».\nVeuillez réapprovisionner l'article ou ajuster la quantité commandée.`
       );
-      if (!confirmExceed) return;
+      return;
     }
 
     const unitPriceHt = currentSelectedArticle.salePriceHt;
@@ -378,13 +386,13 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       setEditingDocId(null);
 
       if (status === 'FISCALIZED') {
-        showToast(`Facture ${updatedDoc.documentNumber} validée et normalisée e-MECeF avec succès ! Sortie de stock effectuée.`);
+        showToast(`Facture de vente ${updatedDoc.documentNumber} validée et normalisée e-MECeF avec succès ! Sortie de stock effectuée.`);
         setViewingInvoice(updatedDoc);
         setPreviewTab('INVOICE');
       } else if (status === 'VALIDATED') {
-        showToast(`Facture ${updatedDoc.documentNumber} validée avec succès. Sortie de stock effectuée. Document disponible en Proforma.`);
+        showToast(`Facture de vente ${updatedDoc.documentNumber} validée avec succès. Sortie de stock effectuée.`);
       } else {
-        showToast(`Brouillon ${updatedDoc.documentNumber} mis à jour avec succès (Stock non déduit).`);
+        showToast(`Facture Proforma ${updatedDoc.documentNumber} mise à jour avec succès (Stock non déduit).`);
       }
       return;
     }
@@ -432,13 +440,13 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     setShowInvoiceModal(false);
 
     if (status === 'FISCALIZED') {
-      showToast(`Facture ${newDoc.documentNumber} validée et normalisée e-MECeF avec succès ! Sortie de stock effectuée.`);
+      showToast(`Facture de vente ${newDoc.documentNumber} validée et normalisée e-MECeF avec succès ! Sortie de stock effectuée.`);
       setViewingInvoice(newDoc);
       setPreviewTab('INVOICE');
     } else if (status === 'VALIDATED') {
-      showToast(`Facture ${newDoc.documentNumber} validée avec succès. Sortie de stock effectuée. Document disponible en Proforma.`);
+      showToast(`Facture de vente ${newDoc.documentNumber} validée avec succès. Sortie de stock effectuée.`);
     } else {
-      showToast(`Brouillon ${newDoc.documentNumber} enregistré avec succès (Stock non déduit).`);
+      showToast(`Facture Proforma ${newDoc.documentNumber} enregistrée avec succès (Stock non déduit).`);
     }
   };
 
@@ -474,7 +482,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
 
     setDocuments(updated);
     saveSalesDocuments(companySlug, updated);
-    showToast(`Facture ${doc.documentNumber} certifiée & normalisée e-MECeF avec succès !`);
+    showToast(`Facture de vente ${doc.documentNumber} certifiée & normalisée e-MECeF avec succès !`);
 
     // Ouvrir directement l'aperçu officiel certifié
     const fiscalizedDoc = updated.find((d) => d.id === docId);
@@ -484,7 +492,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     }
   };
 
-  // Validation d'un brouillon existant (Déduit le stock)
+  // Validation d'une Facture Proforma existante (Déduit le stock -> devient Facture de Vente)
   const handleValidateExistingDraft = (docId: string) => {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
@@ -514,10 +522,10 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     });
     setDocuments(updated);
     saveSalesDocuments(companySlug, updated);
-    showToast(`Facture ${doc.documentNumber} validée : Stock déduit. Document disponible en Proforma.`);
+    showToast(`Facture de vente ${doc.documentNumber} validée avec succès : Stock déduit.`);
   };
 
-  // Validation et normalisation directe d'un brouillon existant (Déduit le stock + normalise)
+  // Validation et normalisation directe d'une Facture Proforma existante (Déduit le stock + normalise e-MECeF)
   const handleValidateAndFiscalizeDraft = (docId: string) => {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
@@ -561,7 +569,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     });
     setDocuments(updated);
     saveSalesDocuments(companySlug, updated);
-    showToast(`Facture ${doc.documentNumber} validée et normalisée e-MECeF ! Stock déduit.`);
+    showToast(`Facture de vente ${doc.documentNumber} validée et normalisée e-MECeF ! Stock déduit.`);
 
     const fiscalizedDoc = updated.find((d) => d.id === docId);
     if (fiscalizedDoc) {
@@ -570,15 +578,15 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     }
   };
 
-  // Suppression d'un brouillon
+  // Suppression d'une Facture Proforma
   const handleDeleteDraft = (docId: string) => {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
-    if (!confirm(`Supprimer définitivement le brouillon ${doc.documentNumber} ?`)) return;
+    if (!confirm(`Supprimer définitivement la Facture Proforma ${doc.documentNumber} ?`)) return;
     const nextDocuments = documents.filter((d) => d.id !== docId);
     setDocuments(nextDocuments);
     saveSalesDocuments(companySlug, nextDocuments);
-    showToast(`Brouillon ${doc.documentNumber} supprimé.`);
+    showToast(`Facture Proforma ${doc.documentNumber} supprimée.`);
   };
 
   // Enregistrement rapide d'un nouveau client
@@ -698,15 +706,16 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
         }
         if (row.status === 'VALIDATED') {
           return (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Facture validée avec sortie de stock. Titre sur document: Facture Proforma">
-              <FileText className="w-3.5 h-3.5 text-amber-600" />
-              Proforma (validée)
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200" title="Facture de vente validée avec sortie de stock. Titre sur document: FACTURE DE VENTE">
+              <Check className="w-3.5 h-3.5 text-blue-600" />
+              Facture de vente (validée)
             </span>
           );
         }
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200" title="Brouillon en attente de validation. Stock non déduit">
-            Brouillon
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200" title="Facture Proforma (en attente de validation. Stock non déduit)">
+            <FileText className="w-3.5 h-3.5 text-sky-600" />
+            Facture Proforma
           </span>
         );
       },
@@ -727,7 +736,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       header: 'Actions',
       cell: (row) => (
         <div className="flex items-center gap-1.5">
-          {/* Si brouillon : boutons Modifier, Aperçu, Valider, Normaliser et Supprimer */}
+          {/* Si Facture Proforma : boutons Modifier, Aperçu, Valider, Normaliser et Supprimer */}
           {row.status === 'DRAFT' && (
             <>
               <Button
@@ -735,7 +744,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 variant="outline"
                 onClick={() => handleEditDraft(row)}
                 className="text-xs h-7 px-2.5 text-blue-700 border-blue-300 hover:bg-blue-50 font-semibold flex items-center gap-1"
-                title="Modifier ce brouillon (articles, remises, client, règlement)"
+                title="Modifier cette Facture Proforma"
               >
                 <Pencil className="w-3 h-3" />
                 <span>Modifier</span>
@@ -748,7 +757,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   setPreviewTab('INVOICE');
                 }}
                 className="text-xs h-7 px-2 text-gray-700 border-gray-300 hover:bg-gray-50 flex items-center gap-1"
-                title="Aperçu du brouillon"
+                title="Aperçu de la Facture Proforma"
               >
                 <Eye className="w-3 h-3 text-gray-500" />
                 <span>Aperçu</span>
@@ -756,8 +765,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
               <Button
                 size="sm"
                 onClick={() => handleValidateExistingDraft(row.id)}
-                className="text-xs h-7 px-2 bg-blue-600 hover:bg-blue-700 font-semibold"
-                title="Valider la facture (déduit le stock, titre: Facture Proforma)"
+                className="text-xs h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                title="Valider en Facture de Vente (déduit le stock)"
               >
                 Valider
               </Button>
@@ -765,7 +774,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 size="sm"
                 onClick={() => handleValidateAndFiscalizeDraft(row.id)}
                 className="text-xs h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1 shadow-sm"
-                title="Valider et certifier e-MECeF immédiatement"
+                title="Valider et normaliser e-MECeF immédiatement"
               >
                 <ShieldCheck className="w-3 h-3" />
                 Normaliser
@@ -775,14 +784,14 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 variant="ghost"
                 onClick={() => handleDeleteDraft(row.id)}
                 className="text-xs h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                title="Supprimer ce brouillon"
+                title="Supprimer cette Facture Proforma"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </>
           )}
 
-          {/* Si validée non normalisée : bouton Normaliser e-MECeF et Aperçu Proforma */}
+          {/* Si Facture de Vente validée non normalisée : bouton Normaliser e-MECeF et Aperçu Facture de Vente */}
           {row.status === 'VALIDATED' && (
             <>
               <Button
@@ -801,11 +810,11 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   setViewingInvoice(row);
                   setPreviewTab('INVOICE');
                 }}
-                className="text-xs h-7 px-2 text-amber-800 border-amber-300 hover:bg-amber-50 flex items-center gap-1"
-                title="Aperçu du document Proforma"
+                className="text-xs h-7 px-2 text-blue-800 border-blue-300 hover:bg-blue-50 flex items-center gap-1 font-medium"
+                title="Aperçu de la Facture de Vente"
               >
-                <FileText className="w-3.5 h-3.5 text-amber-600" />
-                <span>Aperçu Proforma</span>
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span>Aperçu Facture</span>
               </Button>
             </>
           )}
@@ -890,12 +899,12 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">
-                    {editingDocId ? `Modifier le Projet de Facture (Brouillon ${docNumber})` : 'Facturation des Ventes'}
+                    {editingDocId ? `Modifier la Facture Proforma (${docNumber})` : 'Nouvelle Vente / Facture Proforma'}
                   </h2>
                   <p className="text-xs text-gray-500">
                     {editingDocId
-                      ? 'Modifiez les articles, remises et conditions avant validation définitive'
-                      : 'Saisie assistée des articles, calculs fiscaux et émission de documents officiels'}
+                      ? 'Modifiez les articles, remises et conditions avant validation définitive en Facture de Vente'
+                      : 'Saisie des articles, calculs fiscaux et émission de Proformas ou Factures de vente'}
                   </p>
                 </div>
               </div>
@@ -1049,7 +1058,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                     >
                       {articles.map((a) => (
                         <option key={a.id} value={a.id}>
-                          {a.name} [{a.taxGroup}] - {formatFcfa(a.salePriceHt)}
+                          {a.name} [{a.taxGroup}] - {formatFcfa(a.salePriceHt)} {a.currentStock <= 0 ? '⚠️ (ÉPUISÉ - 0 stock)' : `(Stock: ${a.currentStock})`}
                         </option>
                       ))}
                     </select>
@@ -1058,17 +1067,27 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   {/* Stock disponible restant */}
                   <div>
                     <label className="font-semibold text-gray-700 block mb-1">Stock dispo</label>
-                    <div className="h-9 px-2.5 bg-white border border-gray-200 rounded-md flex items-center justify-between">
+                    <div className={`h-9 px-2.5 rounded-md flex items-center justify-between border ${
+                      !currentSelectedArticle || currentSelectedArticle.currentStock <= 0
+                        ? 'bg-red-50 border-red-200'
+                        : currentSelectedArticle.currentStock <= currentSelectedArticle.minStockAlert
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-emerald-50 border-emerald-200'
+                    }`}>
                       <span
-                        className={`font-black ${
+                        className={`font-black text-xs ${
                           !currentSelectedArticle || currentSelectedArticle.currentStock <= 0
                             ? 'text-red-600'
                             : currentSelectedArticle.currentStock <= currentSelectedArticle.minStockAlert
-                            ? 'text-amber-600'
+                            ? 'text-amber-700'
                             : 'text-emerald-700'
                         }`}
                       >
-                        {currentSelectedArticle ? `${currentSelectedArticle.currentStock} unités` : '-'}
+                        {!currentSelectedArticle
+                          ? '-'
+                          : currentSelectedArticle.currentStock <= 0
+                          ? '0 unité (Épuisé)'
+                          : `${currentSelectedArticle.currentStock} unités`}
                       </span>
                     </div>
                   </div>
@@ -1388,23 +1407,23 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   Annuler
                 </Button>
 
-                {/* Bouton 1 : Enregistrer comme brouillon */}
+                {/* Bouton 1 : Enregistrer comme Proforma */}
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => handleSaveInvoice('DRAFT')}
                   className="text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300"
-                  title="Enregistre la facture en brouillon. Le stock physique ne sera pas déduit."
+                  title="Enregistre la facture comme Facture Proforma. Le stock physique ne sera pas déduit."
                 >
-                  Enregistrer comme brouillon
+                  Enregistrer comme Proforma
                 </Button>
 
-                {/* Bouton 2 : Valider la facture */}
+                {/* Bouton 2 : Valider la facture de vente */}
                 <Button
                   type="button"
                   onClick={() => handleSaveInvoice('VALIDATED')}
                   className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold"
-                  title="Valide la facture et déduit les articles du stock. Titre sur document: FACTURE PROFORMA."
+                  title="Valide la facture de vente et déduit les articles du stock physique. Titre: FACTURE DE VENTE."
                 >
                   Valider la facture
                 </Button>
@@ -1621,8 +1640,12 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                             ? "FACTURE D'EXPORTATION"
                             : 'FACTURE DE VENTE'
                           : viewingInvoice.status === 'VALIDATED'
-                          ? 'FACTURE PROFORMA'
-                          : 'FACTURE BROUILLON'}
+                          ? viewingInvoice.type === 'EXPORT'
+                            ? "FACTURE D'EXPORTATION"
+                            : 'FACTURE DE VENTE'
+                          : viewingInvoice.type === 'EXPORT'
+                          ? "FACTURE PROFORMA D'EXPORTATION"
+                          : 'FACTURE PROFORMA'}
                       </span>
                       <span className="font-mono font-bold text-sm text-blue-700 block">
                         N° {viewingInvoice.documentNumber}
@@ -1640,8 +1663,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       )}
                       {viewingInvoice.status === 'DRAFT' && (
                         <div className="mt-1">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-300 text-[10px] font-bold">
-                            BROUILLON (STOCK NON DÉDUIT)
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-300 text-[10px] font-bold">
+                            PROFORMA (STOCK NON DÉDUIT)
                           </span>
                         </div>
                       )}
@@ -1768,8 +1791,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       {viewingInvoice.status === 'FISCALIZED'
                         ? (viewingInvoice.type === 'EXPORT' ? 'TICKET VENTE EXPORT' : 'TICKET DE VENTE NORMALISÉ')
                         : viewingInvoice.status === 'VALIDATED'
-                        ? 'TICKET PROFORMA'
-                        : 'TICKET BROUILLON'}
+                        ? (viewingInvoice.type === 'EXPORT' ? 'TICKET VENTE EXPORT' : 'TICKET DE VENTE')
+                        : 'TICKET PROFORMA'}
                     </span>
                   </div>
 
@@ -1839,9 +1862,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                         <p className="text-emerald-700 font-bold">FACTURE NORMALISÉE CERTIFIÉE</p>
                       </>
                     ) : viewingInvoice.status === 'VALIDATED' ? (
-                      <p className="font-bold text-gray-700">TICKET PROFORMA</p>
+                      <p className="font-bold text-gray-700">FACTURE DE VENTE (NON NORMALISÉE)</p>
                     ) : (
-                      <p className="text-gray-400">PROJET BROUILLON</p>
+                      <p className="font-bold text-blue-700">FACTURE PROFORMA</p>
                     )}
                     <p className="pt-1">MERCI DE VOTRE CONFIANCE !</p>
                   </div>

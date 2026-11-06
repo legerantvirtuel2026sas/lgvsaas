@@ -75,11 +75,11 @@ describe('Cycle des ventes, marge figée et calculs fiscaux (Module M6)', () => 
     expect(generateDocNumber('EXPORT', existingDocs)).toBe(`EXP-${currentYear}-0002`);
   });
 
-  it('préserve les brouillons sans impact sur le stock et valide la déduction de stock uniquement lors de la validation', () => {
+  it('préserve les proformas sans impact sur le stock et valide la déduction de stock uniquement lors de la validation', () => {
     let stock = 20;
 
-    // Brouillon : le stock n'est pas modifié
-    const draftStatus = 'DRAFT';
+    // Proforma : le stock n'est pas modifié
+    const proformaStatus = 'DRAFT';
     function processInvoice(status: 'DRAFT' | 'VALIDATED' | 'FISCALIZED', qty: number) {
       if (status === 'VALIDATED' || status === 'FISCALIZED') {
         stock = Math.max(0, stock - qty);
@@ -87,8 +87,47 @@ describe('Cycle des ventes, marge figée et calculs fiscaux (Module M6)', () => 
       return stock;
     }
 
-    expect(processInvoice(draftStatus, 5)).toBe(20); // Inchangé
+    expect(processInvoice(proformaStatus, 5)).toBe(20); // Inchangé
     expect(processInvoice('VALIDATED', 5)).toBe(15); // Déduit lors de la validation
     expect(processInvoice('FISCALIZED', 10)).toBe(5); // Déduit lors de la normalisation
+  });
+
+  it('bloque formellement l’ajout d’un article épuisé en stock avec message explicite', () => {
+    const exhaustedProduct = {
+      id: 'prod_epuise',
+      name: 'Clavier USB Filaire',
+      currentStock: 0,
+    };
+
+    function validateArticleStock(product: typeof exhaustedProduct, qty: number) {
+      if (product.currentStock <= 0) {
+        throw new Error(`Cet article est épuisé : Vous devez d'abord réapprovisionner l'article « ${product.name} » en stock.`);
+      }
+      if (qty > product.currentStock) {
+        throw new Error(`Stock insuffisant : Il ne reste que ${product.currentStock} unité(s).`);
+      }
+      return true;
+    }
+
+    expect(() => validateArticleStock(exhaustedProduct, 1)).toThrow(/Cet article est épuisé/);
+  });
+
+  it('attribue le bon titre de document selon le cycle de vie : Proforma -> Facture de Vente -> Normalisée', () => {
+    function getDocumentTitle(status: 'DRAFT' | 'VALIDATED' | 'FISCALIZED', type: 'INVOICE' | 'EXPORT') {
+      if (status === 'FISCALIZED') {
+        return type === 'EXPORT' ? "FACTURE D'EXPORTATION" : "FACTURE DE VENTE";
+      }
+      if (status === 'VALIDATED') {
+        return type === 'EXPORT' ? "FACTURE D'EXPORTATION" : "FACTURE DE VENTE";
+      }
+      return type === 'EXPORT' ? "FACTURE PROFORMA D'EXPORTATION" : "FACTURE PROFORMA";
+    }
+
+    expect(getDocumentTitle('DRAFT', 'INVOICE')).toBe('FACTURE PROFORMA');
+    expect(getDocumentTitle('VALIDATED', 'INVOICE')).toBe('FACTURE DE VENTE');
+    expect(getDocumentTitle('FISCALIZED', 'INVOICE')).toBe('FACTURE DE VENTE');
+    expect(getDocumentTitle('DRAFT', 'EXPORT')).toBe("FACTURE PROFORMA D'EXPORTATION");
+    expect(getDocumentTitle('VALIDATED', 'EXPORT')).toBe("FACTURE D'EXPORTATION");
+    expect(getDocumentTitle('FISCALIZED', 'EXPORT')).toBe("FACTURE D'EXPORTATION");
   });
 });

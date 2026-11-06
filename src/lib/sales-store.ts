@@ -246,7 +246,7 @@ export function saveSalesDocuments(companySlug: string, documents: SalesRow[]): 
 }
 
 // Générateur automatique de numéro de document annuel selon les règles de facturation
-export function generateDocNumber(type: 'INVOICE' | 'EXPORT', docList: SalesRow[]): string {
+export function generateDocNumber(type: 'INVOICE' | 'EXPORT', docList: Array<{ documentNumber: string }>): string {
   const currentYear = new Date().getFullYear();
   const prefix = type === 'EXPORT' ? 'EXP' : 'FAC';
   const prefixPattern = `${prefix}-${currentYear}-`;
