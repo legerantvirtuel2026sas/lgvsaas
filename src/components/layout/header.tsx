@@ -57,20 +57,21 @@ export function Header({
         )}
       </div>
 
-      <div className="flex items-center space-x-2.5 sm:space-x-3">
-        <Link href="/app/entreprises">
-          <Button variant="ghost" size="sm" className="h-8 px-3 text-xs font-medium rounded-lg">
-            Mes entreprises
-          </Button>
+      <div className="flex items-center space-x-2.5 sm:space-x-3 my-auto">
+        <Link
+          href="/app/entreprises"
+          className="inline-flex items-center justify-center h-8 px-3 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-colors leading-none"
+        >
+          Mes entreprises
         </Link>
-        <span className="inline-flex items-center justify-center h-8 px-3 rounded-lg text-xs font-semibold tracking-wide bg-gray-100 text-gray-700 border border-gray-200">
+        <span className="inline-flex items-center justify-center h-8 px-3 rounded-lg text-xs font-semibold tracking-wide bg-gray-100 text-gray-700 border border-gray-200 leading-none">
           {userRole}
         </span>
         <Button
           variant="outline"
           size="sm"
           onClick={handleLogout}
-          className="h-8 px-3 text-xs font-medium rounded-lg hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors"
+          className="inline-flex items-center justify-center h-8 px-3 text-xs font-medium rounded-lg hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors leading-none"
         >
           Déconnexion
         </Button>
