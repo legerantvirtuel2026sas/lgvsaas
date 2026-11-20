@@ -30,7 +30,7 @@ export default function MyCompaniesPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* En-tête de l'espace Propriétaire */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <span className="text-xl font-bold text-blue-600 tracking-tight">LGV SaaS</span>
             <span className="text-gray-300">|</span>

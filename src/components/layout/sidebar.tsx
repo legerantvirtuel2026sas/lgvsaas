@@ -107,7 +107,7 @@ export function Sidebar({ companySlug, role, userPermissions }: SidebarProps) {
     <aside
       ref={sidebarRef}
       style={{ width: `${width}px` }}
-      className={`relative shrink-0 bg-white border-r border-gray-200 flex flex-col h-[calc(100vh-4rem)] sticky top-16 select-none ${
+      className={`relative shrink-0 bg-white border-r border-gray-200 flex flex-col h-[calc(100vh-5rem)] sticky top-20 select-none ${
         isResizing ? 'transition-none' : 'transition-[width] duration-75'
       }`}
     >
