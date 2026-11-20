@@ -1538,11 +1538,11 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
       {/* MODAL APERÇU & IMPRESSION (FACTURE A4, TICKET THERMIQUE 80MM, BORDEREAU) */}
       {/* ========================================================================= */}
       {viewingInvoice && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 my-auto border border-gray-200 max-h-[95vh] flex flex-col">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto print:block">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 my-auto border border-gray-200 max-h-[95vh] flex flex-col print:max-h-none print:h-auto print:shadow-none print:border-none print:p-0 print:w-full print:max-w-none print:block">
             
             {/* Barre de navigation des formats d'impression */}
-            <div className="flex flex-col sm:flex-row items-center justify-between pb-3 border-b gap-3 shrink-0">
+            <div className="flex flex-col sm:flex-row items-center justify-between pb-3 border-b gap-3 shrink-0 print:hidden">
               <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl">
                 <button
                   type="button"
@@ -1603,12 +1603,12 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
               </div>
             </div>
 
-            {/* Conteneur imprimable */}
-            <div className="overflow-y-auto flex-1 p-4 bg-gray-100 rounded-xl flex justify-center">
+            {/* Conteneur imprimable adaptable automatiquement à la hauteur du contenu */}
+            <div className="overflow-y-auto flex-1 p-4 sm:p-6 bg-gray-100 rounded-xl flex justify-center items-start print:p-0 print:bg-transparent print:overflow-visible print:block">
               
               {/* VUE 1 : FACTURE OFFICIELLE FORMAT A4 */}
               {previewTab === 'INVOICE' && (
-                <div className="bg-white p-8 max-w-2xl w-full rounded-lg shadow-sm text-gray-800 space-y-6 text-xs border border-gray-200 print:border-none print:shadow-none">
+                <div className="bg-white p-8 max-w-2xl w-full rounded-lg shadow-sm text-gray-800 space-y-6 text-xs border border-gray-200 h-auto self-start mb-6 print:border-none print:shadow-none print:m-0 print:p-0">
                   {/* Entête société & e-MECeF */}
                   <div className="flex items-start justify-between border-b-2 border-blue-600 pb-4">
                     <div>
@@ -1744,7 +1744,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                         </div>
                       )}
 
-                      {/* Bloc Situation du Paiement & Dette / Reste à Payer */}
+                      {/* Bloc Situation du Paiement & Dette / Reste à Payer (Côté gauche) */}
                       <div className={`p-3 rounded-lg border text-[11px] space-y-1.5 ${
                         viewingInvoice.remainingAmount > 0
                           ? 'bg-amber-50/70 border-amber-300'
@@ -1787,7 +1787,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       </div>
                     </div>
 
-                    {/* Encadré des montants avec Gestion du Règlement */}
+                    {/* Encadré des montants (s'arrête au Net à Payer sans répétition) */}
                     <div className="w-64 space-y-1.5 text-right font-mono shrink-0">
                       <div className="flex justify-between text-gray-600">
                         <span>Total Net HT :</span>
@@ -1807,28 +1807,14 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                         <span>Net à Payer :</span>
                         <span>{formatFcfa(viewingInvoice.netToPay)}</span>
                       </div>
-
-                      {/* Lignes Situation du Paiement dans le bloc financier */}
-                      <div className="border-t border-gray-200 pt-1.5 mt-1 space-y-1">
-                        <div className="flex justify-between text-gray-700 text-xs">
-                          <span>Montant Déjà Payé :</span>
-                          <span className="font-bold text-emerald-700">{formatFcfa(viewingInvoice.paidAmount)}</span>
-                        </div>
-                        <div className={`flex justify-between text-xs ${
-                          viewingInvoice.remainingAmount > 0 ? 'text-red-600 font-black' : 'text-emerald-700 font-bold'
-                        }`}>
-                          <span>Reste à Payer :</span>
-                          <span>{formatFcfa(viewingInvoice.remainingAmount)}</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* VUE 2 : TICKET DE CAISSE THERMIQUE (80MM) */}
+              {/* VUE 2 : TICKET DE CAISSE THERMIQUE (80MM) - Longueur adaptative automatique */}
               {previewTab === 'RECEIPT' && (
-                <div className="bg-white p-4 max-w-[320px] w-full rounded shadow-sm text-gray-900 space-y-3 font-mono text-[11px] border border-gray-200">
+                <div className="bg-white p-5 w-full max-w-[340px] rounded-lg shadow-md text-gray-900 space-y-3 font-mono text-[11px] border border-gray-300 h-auto min-h-fit self-start mb-6 print:border-none print:shadow-none print:m-0 print:p-0">
                   <div className="text-center space-y-0.5 border-b pb-2">
                     <span className="font-black text-sm block tracking-wide">{companyDisplayName}</span>
                     <p className="text-[10px] text-gray-600">BOUTIQUE CENTRALE - COTONOU</p>
@@ -1853,14 +1839,14 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   {/* Lignes d'articles ticket */}
                   <div className="space-y-1.5 border-b pb-2">
                     {viewingInvoice.items.map((item, idx) => (
-                      <div key={idx} className="flex justify-between">
-                        <div>
-                          <span className="block font-bold">{item.name.slice(0, 22)}</span>
+                      <div key={idx} className="flex justify-between items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-bold break-words">{item.name}</span>
                           <span className="text-[10px] text-gray-500">
                             {item.quantity} x {formatFcfa(item.unitPriceTtc)} [{item.taxGroup}]
                           </span>
                         </div>
-                        <span className="font-bold">{formatFcfa(item.totalLineTtc)}</span>
+                        <span className="font-bold shrink-0">{formatFcfa(item.totalLineTtc)}</span>
                       </div>
                     ))}
                   </div>
@@ -1902,15 +1888,15 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   </div>
 
                   {/* Règlement ticket */}
-                  <div className="space-y-0.5 text-[10px] border-b pb-2">
+                  <div className="space-y-1 text-[10px] border-b pb-2">
                     <p>
-                      Mode : {viewingInvoice.paymentMode === 'MOBILE_MONEY'
+                      Mode : <strong>{viewingInvoice.paymentMode === 'MOBILE_MONEY'
                         ? 'Mobile Money (MTN/Moov/Celtiis)'
                         : viewingInvoice.paymentMode === 'A_TERME'
                         ? 'À terme'
                         : viewingInvoice.paymentMode === 'ESPECES'
                         ? 'Espèces'
-                        : viewingInvoice.paymentMode}
+                        : viewingInvoice.paymentMode}</strong>
                     </p>
                     {viewingInvoice.receivedCash && viewingInvoice.receivedCash > 0 && (
                       <>
@@ -1919,12 +1905,12 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       </>
                     )}
                     {viewingInvoice.remainingAmount > 0 ? (
-                      <p className="text-red-600 font-bold pt-1 border-t border-dotted">
-                        ⚠️ FACTURE NON SOLDÉE
-                        <br />
-                        Dette : {formatFcfa(viewingInvoice.remainingAmount)}
-                        {viewingInvoice.dueDate ? ` (Échéance : ${viewingInvoice.dueDate})` : ''}
-                      </p>
+                      <div className="text-red-600 font-bold pt-1 border-t border-dotted">
+                        <span>⚠️ STATUT : FACTURE NON SOLDÉE</span>
+                        {viewingInvoice.dueDate && (
+                          <p className="text-gray-700 font-normal">Échéance max : <strong>{viewingInvoice.dueDate}</strong></p>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-emerald-700 font-bold pt-0.5">
                         ✓ FACTURE ENTIÈREMENT SOLDÉE
@@ -1933,11 +1919,11 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                   </div>
 
                   {/* Pied e-MECeF */}
-                  <div className="text-center text-[9px] text-gray-500 pt-1 space-y-0.5">
+                  <div className="text-center text-[9px] text-gray-500 pt-1 space-y-0.5 break-words">
                     {viewingInvoice.status === 'FISCALIZED' ? (
                       <>
                         <p className="font-bold text-gray-800">e-MECeF / DGI BÉNIN</p>
-                        <p className="font-mono font-bold text-emerald-800">{viewingInvoice.emecefCode}</p>
+                        <p className="font-mono font-bold text-emerald-800 break-all">{viewingInvoice.emecefCode}</p>
                         <p className="text-emerald-700 font-bold">FACTURE NORMALISÉE CERTIFIÉE</p>
                       </>
                     ) : viewingInvoice.status === 'VALIDATED' ? (
@@ -1952,7 +1938,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
 
               {/* VUE 3 : BORDEREAU DE LIVRAISON */}
               {previewTab === 'DELIVERY' && (
-                <div className="bg-white p-8 max-w-2xl w-full rounded-lg shadow-sm text-gray-800 space-y-6 text-xs border border-gray-200">
+                <div className="bg-white p-8 max-w-2xl w-full rounded-lg shadow-sm text-gray-800 space-y-6 text-xs border border-gray-200 h-auto self-start mb-6 print:border-none print:shadow-none print:m-0 print:p-0">
                   <div className="flex justify-between border-b pb-3">
                     <div>
                       <span className="text-lg font-black text-gray-900 block">{companyDisplayName}</span>
