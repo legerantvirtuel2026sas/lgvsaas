@@ -1586,9 +1586,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
 
               <div className="flex items-center gap-2">
                 <Button
-                  size="sm"
+                  type="button"
                   onClick={() => window.print()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 font-bold shadow-sm"
+                  className="h-10 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 font-bold text-xs sm:text-sm rounded-xl shadow-sm hover:shadow transition-all"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Imprimer directement</span>
@@ -1596,7 +1596,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                 <button
                   type="button"
                   onClick={() => setViewingInvoice(null)}
-                  className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+                  className="h-10 w-10 flex items-center justify-center text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition-colors"
+                  title="Fermer"
                 >
                   <X className="w-5 h-5" />
                 </button>
