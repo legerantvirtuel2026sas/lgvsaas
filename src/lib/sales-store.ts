@@ -232,6 +232,7 @@ export const DEFAULT_DOCUMENTS: SalesRow[] = [
     paymentMode: 'ESPECES',
     paidAmount: 0,
     remainingAmount: 50150,
+    dueDate: '30/11/2026',
     installments: [],
     status: 'DRAFT',
   },
@@ -352,6 +353,10 @@ export function recordInvoicePayment(
   const newRemaining = Math.max(0, invoice.remainingAmount - paymentAmount);
   const newPaidAmount = invoice.paidAmount + paymentAmount;
 
+  // Référence unique générée automatiquement si non spécifiée manuellement
+  const cleanDoc = invoice.documentNumber.replace(/[^A-Za-z0-9]/g, '');
+  const autoRef = paymentData.reference?.trim() || `REF-PAY-${cleanDoc}-${String(nextSeq).padStart(2, '0')}`;
+
   const newInstallment: InvoicePaymentInstallment = {
     id: `ECH-${String(nextSeq).padStart(3, '0')}`,
     invoiceId: invoice.id,
@@ -361,7 +366,7 @@ export function recordInvoicePayment(
     label: `Versement Échéance N°${nextSeq}`,
     paymentMode: paymentData.paymentMode,
     mobileOperator: paymentData.mobileOperator,
-    reference: paymentData.reference,
+    reference: autoRef,
     amount: paymentAmount,
     remainingAfter: newRemaining,
     recordedBy: paymentData.recordedBy || 'SSEBIO',

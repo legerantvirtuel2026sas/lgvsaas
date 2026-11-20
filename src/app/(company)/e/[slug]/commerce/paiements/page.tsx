@@ -134,14 +134,14 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
     setPaymentNotes('');
   };
 
-  // Raccourci pour solder la totalité
-  const handleFillFullRemaining = () => {
-    if (selectedInvoice) {
-      setPaymentAmountStr(String(selectedInvoice.remainingAmount));
-    }
+  // Raccourci direct pour solder l'intégralité du reste dû en un clic
+  const handleDirectSolderTout = () => {
+    if (!selectedInvoice || selectedInvoice.remainingAmount <= 0) return;
+    setPaymentAmountStr(String(selectedInvoice.remainingAmount));
+    setShowConfirmModal(true);
   };
 
-  // Ouverture du dialogue de confirmation
+  // Ouverture du dialogue de confirmation pour versement
   const handleOpenConfirm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedInvoice) return;
@@ -171,7 +171,6 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
       amount: numericPaymentAmount,
       paymentMode,
       mobileOperator: paymentMode === 'MOBILE_MONEY' ? mobileOperator : undefined,
-      reference: transactionRef || undefined,
       notes: paymentNotes || undefined,
       recordedBy: selectedInvoice.cashierName || 'SSEBIO',
     });
@@ -181,8 +180,13 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
       setPaymentAmountStr('');
       setTransactionRef('');
       setPaymentNotes('');
+      // Proposer immédiatement le reçu thermique pour le paiement effectué
+      setViewingReceiptInstallment({
+        installment: result.newInstallment,
+        invoice: result.updatedInvoice,
+      });
       showToast(
-        `Versement de ${formatFcfa(numericPaymentAmount)} enregistré avec succès sur la facture ${result.updatedInvoice.documentNumber}.`
+        `Règlement enregistré avec succès ! Quittance N° ${result.newInstallment.id} (Réf: ${result.newInstallment.reference}).`
       );
     }
   };
@@ -253,11 +257,13 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
         </div>
 
         {/* Bouton vers Ventes */}
-        <div className="flex items-center gap-3">
-          <Link href={`/e/${companySlug}/commerce/ventes`}>
-            <Button variant="outline" size="sm" className="flex items-center gap-1.5 text-xs font-semibold">
-              <FileText className="w-3.5 h-3.5 text-gray-500" />
-              <span>Voir le journal des ventes</span>
+        <div className="shrink-0">
+          <Link href={`/e/${companySlug}/commerce/ventes`} className="inline-block shrink-0">
+            <Button
+              className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition-all border border-blue-600"
+            >
+              <FileText className="w-4 h-4 shrink-0 text-white" />
+              <span className="whitespace-nowrap">Journal des ventes</span>
             </Button>
           </Link>
         </div>
@@ -313,51 +319,54 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-6">
         
-        {/* Ligne Sélecteur de facture + Bouton Aperçu */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-gray-100">
-          <div className="flex-1 max-w-2xl">
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-              <span>Sélectionner une facture portant un reste à payer *</span>
-              <Badge variant="warning" className="text-[10px] py-0 px-2 font-semibold">
-                {invoicesWithDebt.length} disponible{invoicesWithDebt.length > 1 ? 's' : ''}
-              </Badge>
+        {/* Ligne 1 : Titre + Badge du nombre de factures disponibles */}
+        <div className="space-y-2.5 pb-5 border-b border-gray-100">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              Sélectionner une facture portant un reste à payer *
             </label>
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs whitespace-nowrap">
+              {invoicesWithDebt.length} {invoicesWithDebt.length > 1 ? 'factures disponibles' : 'facture disponible'}
+            </span>
+          </div>
 
-            {invoicesWithDebt.length > 0 ? (
-              <select
-                value={selectedInvoiceId}
-                onChange={(e) => handleSelectInvoice(e.target.value)}
-                className="w-full h-11 px-3.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm"
-              >
-                <optgroup label="Factures avec reste à payer (À recouvrer)">
-                  {invoicesWithDebt.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.documentNumber} • {inv.customerName} — Reste : {formatFcfa(inv.remainingAmount)} (Net : {formatFcfa(inv.netToPay)})
-                    </option>
-                  ))}
-                </optgroup>
-
-                {settledInvoices.length > 0 && (
-                  <optgroup label="Factures déjà entièrement soldées (Historique)">
-                    {settledInvoices.map((inv) => (
+          {/* Ligne 2 : Combo de sélection + Bouton Aperçu de la facture bien alignés */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              {invoicesWithDebt.length > 0 ? (
+                <select
+                  value={selectedInvoiceId}
+                  onChange={(e) => handleSelectInvoice(e.target.value)}
+                  className="w-full h-11 px-3.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm"
+                >
+                  <optgroup label="Factures avec reste à payer (À recouvrer)">
+                    {invoicesWithDebt.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        ✓ {inv.documentNumber} • {inv.customerName} (Soldée — {formatFcfa(inv.netToPay)})
+                        {inv.documentNumber} • {inv.customerName} — Reste : {formatFcfa(inv.remainingAmount)} (Net : {formatFcfa(inv.netToPay)})
                       </option>
                     ))}
                   </optgroup>
-                )}
-              </select>
-            ) : (
-              <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Excellente nouvelle ! Toutes les factures émises sont actuellement entièrement soldées.</span>
-              </div>
-            )}
-          </div>
 
-          {/* Bouton Aperçu de la facture sélectionnée */}
-          {selectedInvoice && (
-            <div className="shrink-0 flex items-center gap-2 pt-2 md:pt-0">
+                  {settledInvoices.length > 0 && (
+                    <optgroup label="Factures déjà entièrement soldées (Historique)">
+                      {settledInvoices.map((inv) => (
+                        <option key={inv.id} value={inv.id}>
+                          ✓ {inv.documentNumber} • {inv.customerName} (Soldée — {formatFcfa(inv.netToPay)})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              ) : (
+                <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Excellente nouvelle ! Toutes les factures émises sont actuellement entièrement soldées.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Bouton Aperçu de la facture sélectionnée */}
+            {selectedInvoice && (
               <Button
                 type="button"
                 variant="outline"
@@ -365,14 +374,14 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                   setViewingInvoice(selectedInvoice);
                   setPreviewTab('INVOICE');
                 }}
-                className="h-11 px-4 border-blue-300 text-blue-700 hover:bg-blue-50 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-all"
+                className="h-11 px-5 border-blue-600 bg-blue-50/70 hover:bg-blue-100 text-blue-700 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm shrink-0 whitespace-nowrap transition-all"
                 title="Consulter l'aperçu officiel A4 ou ticket de cette facture"
               >
-                <Eye className="w-4 h-4 text-blue-600" />
+                <Eye className="w-4 h-4 text-blue-600 shrink-0" />
                 <span>Aperçu de la facture</span>
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {selectedInvoice ? (
@@ -389,29 +398,60 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                 </span>
               </div>
 
-              {/* Bloc client & référence */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-gray-50/80 rounded-xl border border-gray-200 text-xs mb-3">
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-gray-400 shrink-0" />
-                  <div>
-                    <span className="text-gray-400 block text-[10px]">Client facturé :</span>
-                    <strong className="text-gray-900 block truncate">{selectedInvoice.customerName}</strong>
+              {/* Bloc client & référence : dynamique en hauteur, sans chevauchement pour les longs noms */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-gray-50/90 rounded-2xl border border-gray-200 text-xs mb-4 items-start">
+                {/* 1. Client facturé : 6 colonnes, break-words sans restriction */}
+                <div className="md:col-span-6 min-w-0 flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 text-blue-700 rounded-xl shrink-0 mt-0.5">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-gray-500 font-semibold text-[11px] uppercase tracking-wider block mb-0.5">
+                      Client facturé
+                    </span>
+                    <div className="text-gray-900 font-bold text-sm leading-snug break-words whitespace-normal">
+                      {selectedInvoice.customerName}
+                    </div>
+                    {selectedInvoice.customerPhone && (
+                      <span className="text-gray-500 text-xs mt-1 inline-flex items-center gap-1 font-medium">
+                        <Phone className="w-3 h-3 text-gray-400" />
+                        {selectedInvoice.customerPhone}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
-                  <div>
-                    <span className="text-gray-400 block text-[10px]">IFU Client :</span>
-                    <strong className="text-gray-900 font-mono block">{selectedInvoice.customerIfu || 'Non renseigné'}</strong>
+                {/* 2. IFU Client : 3 colonnes */}
+                <div className="md:col-span-3 min-w-0 flex items-start gap-3">
+                  <div className="p-2 bg-gray-100 text-gray-700 rounded-xl shrink-0 mt-0.5">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-gray-500 font-semibold text-[11px] uppercase tracking-wider block mb-0.5">
+                      N° IFU Client
+                    </span>
+                    <div className="font-mono text-gray-900 font-bold text-xs break-all">
+                      {selectedInvoice.customerIfu && selectedInvoice.customerIfu.trim() !== ''
+                        ? selectedInvoice.customerIfu
+                        : 'Particulier / Non renseigné'}
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-                  <div>
-                    <span className="text-gray-400 block text-[10px]">Date limite d'échéance :</span>
-                    <strong className="text-gray-900 font-mono block">{selectedInvoice.dueDate || 'Non définie'}</strong>
+                {/* 3. Date limite d'échéance : 3 colonnes */}
+                <div className="md:col-span-3 min-w-0 flex items-start gap-3">
+                  <div className="p-2 bg-amber-100 text-amber-800 rounded-xl shrink-0 mt-0.5">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-gray-500 font-semibold text-[11px] uppercase tracking-wider block mb-0.5">
+                      Date limite d'échéance
+                    </span>
+                    <div className="text-gray-900 font-bold text-xs font-mono">
+                      {selectedInvoice.dueDate && selectedInvoice.dueDate.trim() !== ''
+                        ? selectedInvoice.dueDate
+                        : 'Non définie (Facture à terme)'}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -465,7 +505,7 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
 
             {/* 2. Formulaire de saisie du nouveau versement (Si la facture a encore un reste à payer) */}
             {selectedInvoice.remainingAmount > 0 ? (
-              <form onSubmit={handleOpenConfirm} className="p-5 bg-blue-50/40 rounded-2xl border border-blue-200 space-y-4">
+              <form onSubmit={handleOpenConfirm} className="p-5 bg-blue-50/40 rounded-2xl border border-blue-200 space-y-5">
                 <div className="flex items-center justify-between border-b border-blue-100 pb-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-blue-600" />
@@ -478,34 +518,26 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Champ : Montant à payer maintenant */}
+                {/* Deux champs uniquement, parfaitement alignés sur la même ligne */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                  {/* Champ 1 : Montant à verser là tout de suite */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-gray-700">
-                        Montant à verser là tout de suite (FCFA) *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleFillFullRemaining}
-                        className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
-                      >
-                        Solder tout
-                      </button>
-                    </div>
+                    <label className="text-xs font-bold text-gray-800 block">
+                      Montant à verser là tout de suite (FCFA) *
+                    </label>
 
                     <div className="relative">
                       <Input
                         type="number"
                         min="1"
                         max={selectedInvoice.remainingAmount}
-                        placeholder="Ex: 50000"
+                        placeholder="Ex: 50 000"
                         value={paymentAmountStr}
                         onChange={(e) => setPaymentAmountStr(e.target.value)}
                         required
-                        className="h-11 text-base font-bold font-mono pl-3.5 pr-14 rounded-xl border-gray-300 focus:ring-blue-500"
+                        className="h-11 text-base font-bold font-mono pl-3.5 pr-14 rounded-xl border-gray-300 focus:ring-blue-500 bg-white"
                       />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">
                         FCFA
                       </span>
                     </div>
@@ -514,39 +546,39 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                     <div className="text-xs pt-1">
                       {numericPaymentAmount > 0 ? (
                         numericPaymentAmount <= selectedInvoice.remainingAmount ? (
-                          <div className={`p-2 rounded-lg font-medium flex items-center justify-between ${
+                          <div className={`p-2.5 rounded-xl font-medium flex items-center justify-between ${
                             projectedRemaining === 0
                               ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                               : 'bg-amber-100 text-amber-900 border border-amber-300'
                           }`}>
-                            <span>Reste après versement :</span>
+                            <span className="font-semibold">Reste après versement :</span>
                             <strong className="font-mono text-sm font-bold">
-                              {formatFcfa(projectedRemaining)}
+                              {projectedRemaining === 0 ? '0 FCFA (Soldé !)' : formatFcfa(projectedRemaining)}
                             </strong>
                           </div>
                         ) : (
-                          <span className="text-red-600 font-bold flex items-center gap-1">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            Montant supérieur au reste à payer !
-                          </span>
+                          <div className="p-2.5 rounded-xl bg-red-100 text-red-900 border border-red-300 font-bold flex items-center gap-1.5 text-xs">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                            <span>Montant supérieur au reste à payer ({formatFcfa(selectedInvoice.remainingAmount)}) !</span>
+                          </div>
                         )
                       ) : (
-                        <span className="text-gray-500 text-[11px]">
-                          Le reste à payer sera recalculé en direct dès votre saisie.
+                        <span className="text-gray-500 text-[11px] block italic">
+                          Le reste à payer sera calculé automatiquement au fur et à mesure de votre saisie.
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Champ : Mode de règlement */}
+                  {/* Champ 2 : Mode de règlement */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-700 block">
+                    <label className="text-xs font-bold text-gray-800 block">
                       Mode de règlement *
                     </label>
                     <select
                       value={paymentMode}
                       onChange={(e) => setPaymentMode(e.target.value as any)}
-                      className="w-full h-11 px-3 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full h-11 px-3 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
                     >
                       <option value="ESPECES">Espèces (Guichet / Caisse)</option>
                       <option value="MOBILE_MONEY">Mobile Money (MTN / Moov / Celtiis)</option>
@@ -555,15 +587,15 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                     </select>
 
                     {/* Sous-choix opérateur si Mobile Money */}
-                    {paymentMode === 'MOBILE_MONEY' && (
+                    {paymentMode === 'MOBILE_MONEY' ? (
                       <div className="pt-1.5 flex items-center gap-2">
-                        <span className="text-xs font-medium text-gray-500">Réseau :</span>
+                        <span className="text-xs font-semibold text-gray-500">Réseau :</span>
                         {(['CELTIIS', 'MTN', 'MOOV'] as const).map((net) => (
                           <button
                             key={net}
                             type="button"
                             onClick={() => setMobileOperator(net)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                            className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${
                               mobileOperator === net
                                 ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
@@ -573,35 +605,42 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                           </button>
                         ))}
                       </div>
+                    ) : (
+                      <span className="text-gray-400 text-[11px] block pt-1">
+                        Une référence de quittance unique sera attribuée automatiquement à ce règlement.
+                      </span>
                     )}
                   </div>
+                </div>
 
-                  {/* Champ : Référence ou N° de reçu & Bouton de validation */}
-                  <div className="space-y-1.5 flex flex-col justify-between">
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 block">
-                        Référence de transaction / reçu (Optionnel)
-                      </label>
-                      <Input
-                        type="text"
-                        placeholder="Ex: N° transaction MoMo, chèque..."
-                        value={transactionRef}
-                        onChange={(e) => setTransactionRef(e.target.value)}
-                        className="h-11 rounded-xl text-xs"
-                      />
-                    </div>
+                {/* Totalement en bas après les champs : Boutons d'action dont Solder tout */}
+                <div className="pt-4 border-t border-blue-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  {/* Bouton Solder Tout */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleDirectSolderTout}
+                    className="h-11 px-5 border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                    title="Solder l'intégralité du reste à payer en un clic"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Solder tout le reste à payer ({formatFcfa(selectedInvoice.remainingAmount)})</span>
+                  </Button>
 
-                    <div className="pt-2">
-                      <Button
-                        type="submit"
-                        disabled={numericPaymentAmount <= 0 || numericPaymentAmount > selectedInvoice.remainingAmount}
-                        className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Valider et Encaisser</span>
-                      </Button>
-                    </div>
-                  </div>
+                  {/* Bouton Valider l'encaissement saisi */}
+                  <Button
+                    type="submit"
+                    disabled={numericPaymentAmount <= 0 || numericPaymentAmount > selectedInvoice.remainingAmount}
+                    className="h-11 px-6 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+                  >
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>
+                      Valider l'encaissement{' '}
+                      {numericPaymentAmount > 0 && numericPaymentAmount <= selectedInvoice.remainingAmount
+                        ? `(${formatFcfa(numericPaymentAmount)})`
+                        : ''}
+                    </span>
+                  </Button>
                 </div>
               </form>
             ) : (
@@ -756,32 +795,42 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
             </div>
 
             <div className="bg-gray-50 p-4 rounded-xl space-y-2 text-xs border border-gray-200">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Client :</span>
-                <strong className="text-gray-900">{selectedInvoice.customerName}</strong>
+              <div className="flex justify-between items-start gap-2">
+                <span className="text-gray-500 shrink-0">Client :</span>
+                <strong className="text-gray-900 break-words text-right max-w-[70%]">{selectedInvoice.customerName}</strong>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-500">Montant du versement :</span>
                 <strong className="text-emerald-700 font-mono text-sm font-bold">
                   +{formatFcfa(numericPaymentAmount)}
                 </strong>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-500">Mode de règlement :</span>
                 <strong className="text-gray-900 font-semibold">
                   {paymentMode === 'MOBILE_MONEY'
                     ? `Mobile Money (${mobileOperator})`
                     : paymentMode === 'ESPECES'
                     ? 'Espèces'
+                    : paymentMode === 'VIREMENT'
+                    ? 'Virement bancaire'
+                    : paymentMode === 'CHEQUE'
+                    ? 'Chèque bancaire'
                     : paymentMode}
                 </strong>
               </div>
-              <div className="flex justify-between border-t pt-2 mt-2">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Référence d'encaissement :</span>
+                <span className="text-blue-700 font-mono text-[11px] font-bold">
+                  Attribuée automatiquement
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-t pt-2 mt-2">
                 <span className="text-gray-700 font-bold">Reste à payer final :</span>
                 <strong className={`font-mono text-sm font-black ${
                   projectedRemaining > 0 ? 'text-red-600' : 'text-emerald-700'
                 }`}>
-                  {formatFcfa(projectedRemaining)}
+                  {projectedRemaining === 0 ? '0 FCFA (Facture entièrement soldée)' : formatFcfa(projectedRemaining)}
                 </strong>
               </div>
             </div>
