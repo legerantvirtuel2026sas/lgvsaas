@@ -891,7 +891,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-5xl w-full p-5 sm:p-6 shadow-2xl space-y-4 my-auto border border-gray-200 max-h-[96vh] flex flex-col">
             
-            {/* 1. Entête du modal avec Port MECeF et infos générales */}
+            {/* 1. Entête du modal et infos générales */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-200 gap-2 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-black">
@@ -910,13 +910,6 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Port MECeF DGI */}
-                <div className="flex items-center gap-2 px-2.5 py-1 bg-amber-50 rounded-lg border border-amber-200 text-xs">
-                  <span className="font-bold text-amber-900">Port MECeF: 0</span>
-                  <span title="Connecté au système e-MECeF">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  </span>
-                </div>
                 <button
                   type="button"
                   onClick={() => setShowInvoiceModal(false)}
