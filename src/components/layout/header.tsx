@@ -30,28 +30,28 @@ export function Header({
   };
 
   return (
-    <header className="h-20 bg-white border-b border-gray-200 px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-      <div className="flex items-center space-x-3 sm:space-x-4">
+    <header className="h-20 min-h-[5rem] shrink-0 bg-white border-b border-gray-200 px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30 shadow-sm">
+      <div className="flex items-center space-x-3 sm:space-x-4 my-auto">
         <Link href={`/e/${companySlug}`} className="flex items-center space-x-2.5 hover:opacity-90 transition-opacity">
-          <span className="text-xl font-black text-blue-600 tracking-tight">LGV</span>
-          <span className="text-gray-300 font-light text-base">|</span>
-          <span className="font-bold text-gray-900 text-sm sm:text-base hidden sm:inline tracking-tight">
+          <span className="text-xl font-black text-blue-600 tracking-tight leading-none">LGV</span>
+          <span className="text-gray-300 font-light text-base leading-none">|</span>
+          <span className="font-bold text-gray-900 text-sm sm:text-base hidden sm:inline tracking-tight leading-none">
             {companyName}
           </span>
         </Link>
 
         {licenseStatus === 'TRIAL' && (
-          <Badge variant="warning" className="text-xs py-1 px-2.5">
+          <Badge variant="warning" className="text-xs py-1 px-2.5 leading-none">
             Essai : {daysRemaining}j restant{daysRemaining > 1 ? 's' : ''}
           </Badge>
         )}
         {licenseStatus === 'ACTIVE' && (
-          <Badge variant="success" className="text-xs py-1 px-2.5">
+          <Badge variant="success" className="text-xs py-1 px-2.5 leading-none">
             Licence active
           </Badge>
         )}
         {licenseStatus === 'EXPIRED' && (
-          <Badge variant="destructive" className="text-xs py-1 px-2.5">
+          <Badge variant="destructive" className="text-xs py-1 px-2.5 leading-none">
             Expirée
           </Badge>
         )}
