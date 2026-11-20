@@ -1723,32 +1723,72 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                     </tbody>
                   </table>
 
-                  {/* Totaux financiers & récapitulation e-MECeF */}
+                  {/* Totaux financiers & récapitulation e-MECeF & Gestion du paiement */}
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pt-2">
-                    {/* Bloc bas : Informations officielles e-MECeF DGI uniquement si la facture est validée et normalisée */}
-                    {viewingInvoice.status === 'FISCALIZED' ? (
-                      <div className="flex-1 space-y-1 p-3 bg-emerald-50/50 rounded-lg border border-emerald-200">
-                        <span className="text-[10px] font-bold text-emerald-900 uppercase block">
-                          Conformité Fiscale DGI Bénin (e-MECeF)
-                        </span>
-                        <div className="text-[11px] text-gray-700 space-y-0.5">
-                          <p>NIM : <strong className="font-mono">{viewingInvoice.emecefNim}</strong></p>
-                          <p>Compteurs : <strong className="font-mono">{viewingInvoice.emecefCounters}</strong></p>
-                          <p>Code e-MECeF : <strong className="font-mono text-emerald-800 font-bold">{viewingInvoice.emecefCode}</strong></p>
-                          <p className="text-[10px] text-emerald-700 font-semibold pt-1 flex items-center gap-1">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                            ✓ Facture originale normalisée et certifiée par la DGI Bénin
-                          </p>
+                    <div className="flex-1 space-y-3 w-full">
+                      {/* Bloc officiel e-MECeF DGI uniquement si la facture est validée et normalisée */}
+                      {viewingInvoice.status === 'FISCALIZED' && (
+                        <div className="space-y-1 p-3 bg-emerald-50/50 rounded-lg border border-emerald-200">
+                          <span className="text-[10px] font-bold text-emerald-900 uppercase block">
+                            Conformité Fiscale DGI Bénin (e-MECeF)
+                          </span>
+                          <div className="text-[11px] text-gray-700 space-y-0.5">
+                            <p>NIM : <strong className="font-mono">{viewingInvoice.emecefNim}</strong></p>
+                            <p>Compteurs : <strong className="font-mono">{viewingInvoice.emecefCounters}</strong></p>
+                            <p>Code e-MECeF : <strong className="font-mono text-emerald-800 font-bold">{viewingInvoice.emecefCode}</strong></p>
+                            <p className="text-[10px] text-emerald-700 font-semibold pt-1 flex items-center gap-1">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                              ✓ Facture originale normalisée et certifiée par la DGI Bénin
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex-1">
-                        {/* Aucun message d'information ou d'alerte en bas pour les factures proforma */}
-                      </div>
-                    )}
+                      )}
 
-                    {/* Encadré des montants */}
-                    <div className="w-64 space-y-1.5 text-right font-mono">
+                      {/* Bloc Situation du Paiement & Dette / Reste à Payer */}
+                      <div className={`p-3 rounded-lg border text-[11px] space-y-1.5 ${
+                        viewingInvoice.remainingAmount > 0
+                          ? 'bg-amber-50/70 border-amber-300'
+                          : 'bg-emerald-50/40 border-emerald-200'
+                      }`}>
+                        <div className="flex items-center justify-between border-b pb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-700">
+                            Situation du Règlement
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            viewingInvoice.remainingAmount > 0
+                              ? 'bg-red-100 text-red-800 border border-red-200'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          }`}>
+                            {viewingInvoice.remainingAmount > 0 ? 'Facture non soldée' : 'Facture soldée'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 pt-0.5 text-gray-700">
+                          <div>
+                            <span className="text-gray-500 block text-[10px]">Montant déjà payé :</span>
+                            <strong className="text-emerald-700 font-mono text-xs font-bold block mt-0.5">
+                              {formatFcfa(viewingInvoice.paidAmount)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 block text-[10px]">Reste à payer :</span>
+                            <strong className={`font-mono text-xs font-black block mt-0.5 ${
+                              viewingInvoice.remainingAmount > 0 ? 'text-red-600' : 'text-emerald-700'
+                            }`}>
+                              {formatFcfa(viewingInvoice.remainingAmount)}
+                            </strong>
+                          </div>
+                        </div>
+                        {viewingInvoice.remainingAmount > 0 && viewingInvoice.dueDate && (
+                          <div className="text-[10px] text-gray-600 border-t pt-1 flex justify-between">
+                            <span>Date limite d'échéance :</span>
+                            <strong className="text-gray-900">{viewingInvoice.dueDate}</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Encadré des montants avec Gestion du Règlement */}
+                    <div className="w-64 space-y-1.5 text-right font-mono shrink-0">
                       <div className="flex justify-between text-gray-600">
                         <span>Total Net HT :</span>
                         <span>{formatFcfa(viewingInvoice.totalNetHt)}</span>
@@ -1766,6 +1806,20 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       <div className="flex justify-between text-base font-black text-blue-700 border-t pt-1">
                         <span>Net à Payer :</span>
                         <span>{formatFcfa(viewingInvoice.netToPay)}</span>
+                      </div>
+
+                      {/* Lignes Situation du Paiement dans le bloc financier */}
+                      <div className="border-t border-gray-200 pt-1.5 mt-1 space-y-1">
+                        <div className="flex justify-between text-gray-700 text-xs">
+                          <span>Montant Déjà Payé :</span>
+                          <span className="font-bold text-emerald-700">{formatFcfa(viewingInvoice.paidAmount)}</span>
+                        </div>
+                        <div className={`flex justify-between text-xs ${
+                          viewingInvoice.remainingAmount > 0 ? 'text-red-600 font-black' : 'text-emerald-700 font-bold'
+                        }`}>
+                          <span>Reste à Payer :</span>
+                          <span>{formatFcfa(viewingInvoice.remainingAmount)}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1831,18 +1885,50 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       <span>TOTAL TTC:</span>
                       <span>{formatFcfa(viewingInvoice.netToPay)}</span>
                     </div>
+
+                    {/* Gestion du paiement sur ticket */}
+                    <div className="border-t border-dashed border-gray-300 pt-1 space-y-0.5">
+                      <div className="flex justify-between text-emerald-800 font-bold">
+                        <span>MONTANT PAYÉ:</span>
+                        <span>{formatFcfa(viewingInvoice.paidAmount)}</span>
+                      </div>
+                      <div className={`flex justify-between font-bold ${
+                        viewingInvoice.remainingAmount > 0 ? 'text-red-600 font-black' : 'text-emerald-800'
+                      }`}>
+                        <span>RESTE À PAYER:</span>
+                        <span>{formatFcfa(viewingInvoice.remainingAmount)}</span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Règlement ticket */}
                   <div className="space-y-0.5 text-[10px] border-b pb-2">
                     <p>
-                      Mode : {viewingInvoice.paymentMode === 'MOBILE_MONEY' ? 'Mobile Money (MTN/Moov/Celtiis)' : viewingInvoice.paymentMode}
+                      Mode : {viewingInvoice.paymentMode === 'MOBILE_MONEY'
+                        ? 'Mobile Money (MTN/Moov/Celtiis)'
+                        : viewingInvoice.paymentMode === 'A_TERME'
+                        ? 'À terme'
+                        : viewingInvoice.paymentMode === 'ESPECES'
+                        ? 'Espèces'
+                        : viewingInvoice.paymentMode}
                     </p>
                     {viewingInvoice.receivedCash && viewingInvoice.receivedCash > 0 && (
                       <>
                         <p>Espèces Reçus : {formatFcfa(viewingInvoice.receivedCash)}</p>
                         <p>Monnaie Rendue : {formatFcfa(viewingInvoice.changeDue || 0)}</p>
                       </>
+                    )}
+                    {viewingInvoice.remainingAmount > 0 ? (
+                      <p className="text-red-600 font-bold pt-1 border-t border-dotted">
+                        ⚠️ FACTURE NON SOLDÉE
+                        <br />
+                        Dette : {formatFcfa(viewingInvoice.remainingAmount)}
+                        {viewingInvoice.dueDate ? ` (Échéance : ${viewingInvoice.dueDate})` : ''}
+                      </p>
+                    ) : (
+                      <p className="text-emerald-700 font-bold pt-0.5">
+                        ✓ FACTURE ENTIÈREMENT SOLDÉE
+                      </p>
                     )}
                   </div>
 
