@@ -22,6 +22,23 @@ export interface InvoiceLineItem {
 
 export type SalesDocType = 'INVOICE' | 'EXPORT' | 'PROFORMA' | 'CREDIT_NOTE';
 
+// Échelonnement / Historique des paiements d'une facture
+export interface InvoicePaymentInstallment {
+  id: string; // Ex: 'ECH-001'
+  invoiceId: string;
+  documentNumber: string;
+  date: string;
+  time?: string;
+  label: string; // Ex: "Acompte initial à la facturation", "Versement Échéance N°2"
+  paymentMode: 'ESPECES' | 'MOBILE_MONEY' | 'CHEQUE' | 'VIREMENT';
+  mobileOperator?: 'MTN' | 'MOOV' | 'CELTIIS';
+  reference?: string;
+  amount: number;
+  remainingAfter: number;
+  recordedBy?: string;
+  notes?: string;
+}
+
 // Document de facture de vente / proforma / brouillon
 export interface SalesRow extends Record<string, unknown> {
   id: string;
@@ -54,6 +71,8 @@ export interface SalesRow extends Record<string, unknown> {
   receivedCash?: number;
   changeDue?: number;
   dueDate?: string;
+  // Historique des règlements et échelonnements
+  installments?: InvoicePaymentInstallment[];
   // Statut : Brouillon (non validé, stock non déduit), Validé (stock déduit, Proforma), Normalisé (stock déduit, Facture de vente certifiée)
   status: 'DRAFT' | 'VALIDATED' | 'FISCALIZED';
   // Normalisation e-MECeF Bénin
@@ -107,6 +126,20 @@ export const DEFAULT_DOCUMENTS: SalesRow[] = [
     paymentMode: 'ESPECES',
     paidAmount: 416500,
     remainingAmount: 0,
+    installments: [
+      {
+        id: 'ECH-001',
+        invoiceId: 'doc_1',
+        documentNumber: 'FAC-2026-0001',
+        date: '15/10/2026',
+        time: '10:30',
+        label: 'Règlement initial au comptant (Facturation)',
+        paymentMode: 'ESPECES',
+        amount: 416500,
+        remainingAfter: 0,
+        recordedBy: 'SSEBIO',
+      },
+    ],
     status: 'FISCALIZED',
     emecefNim: 'MCF01002026-AB1',
     emecefCounters: '42/189 FV',
@@ -156,6 +189,7 @@ export const DEFAULT_DOCUMENTS: SalesRow[] = [
     paidAmount: 0,
     remainingAmount: 214200,
     dueDate: '15/11/2026',
+    installments: [],
     status: 'VALIDATED',
   },
   {
@@ -198,6 +232,7 @@ export const DEFAULT_DOCUMENTS: SalesRow[] = [
     paymentMode: 'ESPECES',
     paidAmount: 0,
     remainingAmount: 50150,
+    installments: [],
     status: 'DRAFT',
   },
 ];
@@ -265,4 +300,83 @@ export function generateDocNumber(type: 'INVOICE' | 'EXPORT', docList: Array<{ d
   const maxSeq = seqNumbers.length > 0 ? Math.max(...seqNumbers) : 0;
   const nextSeq = maxSeq + 1;
   return `${prefix}-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+}
+
+// Enregistrement d'un nouveau versement / échelonnement pour une facture donnée
+export function recordInvoicePayment(
+  companySlug: string,
+  invoiceId: string,
+  paymentData: {
+    amount: number;
+    paymentMode: 'ESPECES' | 'MOBILE_MONEY' | 'CHEQUE' | 'VIREMENT';
+    mobileOperator?: 'MTN' | 'MOOV' | 'CELTIIS';
+    reference?: string;
+    notes?: string;
+    recordedBy?: string;
+  }
+): { updatedInvoice: SalesRow; newInstallment: InvoicePaymentInstallment } | null {
+  const documents = loadSalesDocuments(companySlug);
+  const invoiceIndex = documents.findIndex((d) => d.id === invoiceId);
+  if (invoiceIndex === -1) return null;
+
+  const invoice = documents[invoiceIndex];
+  const paymentAmount = Math.min(paymentData.amount, invoice.remainingAmount);
+  if (paymentAmount <= 0) return null;
+
+  const currentInstallments = invoice.installments || [];
+  
+  // Si la facture avait un paiement initial lors de la vente et aucun historique d'échéance encore tracé :
+  const hasInitialPayment = invoice.paidAmount > 0 && currentInstallments.length === 0;
+  const initialInstallments: InvoicePaymentInstallment[] = hasInitialPayment
+    ? [
+        {
+          id: 'ECH-001',
+          invoiceId: invoice.id,
+          documentNumber: invoice.documentNumber,
+          date: invoice.date,
+          time: invoice.time || '10:00',
+          label: 'Acompte initial à la facturation',
+          paymentMode: invoice.paymentMode === 'A_TERME' ? 'ESPECES' : invoice.paymentMode,
+          amount: invoice.paidAmount,
+          remainingAfter: invoice.netToPay - invoice.paidAmount,
+          recordedBy: invoice.cashierName || 'SSEBIO',
+        },
+      ]
+    : [...currentInstallments];
+
+  const now = new Date();
+  const currentDateStr = now.toLocaleDateString('fr-FR');
+  const currentTimeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  const nextSeq = initialInstallments.length + 1;
+  const newRemaining = Math.max(0, invoice.remainingAmount - paymentAmount);
+  const newPaidAmount = invoice.paidAmount + paymentAmount;
+
+  const newInstallment: InvoicePaymentInstallment = {
+    id: `ECH-${String(nextSeq).padStart(3, '0')}`,
+    invoiceId: invoice.id,
+    documentNumber: invoice.documentNumber,
+    date: currentDateStr,
+    time: currentTimeStr,
+    label: `Versement Échéance N°${nextSeq}`,
+    paymentMode: paymentData.paymentMode,
+    mobileOperator: paymentData.mobileOperator,
+    reference: paymentData.reference,
+    amount: paymentAmount,
+    remainingAfter: newRemaining,
+    recordedBy: paymentData.recordedBy || 'SSEBIO',
+    notes: paymentData.notes,
+  };
+
+  const updatedInvoice: SalesRow = {
+    ...invoice,
+    paidAmount: newPaidAmount,
+    remainingAmount: newRemaining,
+    installments: [...initialInstallments, newInstallment],
+  };
+
+  documents[invoiceIndex] = updatedInvoice;
+  saveSalesDocuments(companySlug, documents);
+
+  return { updatedInvoice, newInstallment };
 }
