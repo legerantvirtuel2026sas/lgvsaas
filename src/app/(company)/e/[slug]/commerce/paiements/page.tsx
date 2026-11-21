@@ -522,12 +522,12 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
                   {/* Champ 1 : Montant à verser là tout de suite */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-800 block">
+                    <label className="text-xs font-bold text-gray-800 h-6 flex items-center whitespace-nowrap">
                       Montant à verser là tout de suite (FCFA) *
                     </label>
 
                     <div className="relative">
-                      <Input
+                      <input
                         type="number"
                         min="1"
                         max={selectedInvoice.remainingAmount}
@@ -535,7 +535,7 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                         value={paymentAmountStr}
                         onChange={(e) => setPaymentAmountStr(e.target.value)}
                         required
-                        className="h-11 text-base font-bold font-mono pl-3.5 pr-14 rounded-xl border-gray-300 focus:ring-blue-500 bg-white"
+                        className="w-full h-11 pl-3.5 pr-14 bg-white border border-gray-300 rounded-xl text-base font-bold font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all"
                       />
                       <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">
                         FCFA
@@ -563,7 +563,7 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                           </div>
                         )
                       ) : (
-                        <span className="text-gray-500 text-[11px] block italic">
+                        <span className="text-gray-500 text-[11px] block italic py-1">
                           Le reste à payer sera calculé automatiquement au fur et à mesure de votre saisie.
                         </span>
                       )}
@@ -572,13 +572,13 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
 
                   {/* Champ 2 : Mode de règlement */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-800 block">
+                    <label className="text-xs font-bold text-gray-800 h-6 flex items-center whitespace-nowrap">
                       Mode de règlement *
                     </label>
                     <select
                       value={paymentMode}
                       onChange={(e) => setPaymentMode(e.target.value as any)}
-                      className="w-full h-11 px-3 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                      className="w-full h-11 px-3.5 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all"
                     >
                       <option value="ESPECES">Espèces (Guichet / Caisse)</option>
                       <option value="MOBILE_MONEY">Mobile Money (MTN / Moov / Celtiis)</option>
@@ -587,29 +587,31 @@ export default function PaymentsAndInstallmentsPage({ params }: { params: { slug
                     </select>
 
                     {/* Sous-choix opérateur si Mobile Money */}
-                    {paymentMode === 'MOBILE_MONEY' ? (
-                      <div className="pt-1.5 flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500">Réseau :</span>
-                        {(['CELTIIS', 'MTN', 'MOOV'] as const).map((net) => (
-                          <button
-                            key={net}
-                            type="button"
-                            onClick={() => setMobileOperator(net)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${
-                              mobileOperator === net
-                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                            }`}
-                          >
-                            {net}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-[11px] block pt-1">
-                        Une référence de quittance unique sera attribuée automatiquement à ce règlement.
-                      </span>
-                    )}
+                    <div className="text-xs pt-1">
+                      {paymentMode === 'MOBILE_MONEY' ? (
+                        <div className="flex items-center gap-2 py-0.5">
+                          <span className="text-xs font-semibold text-gray-500">Réseau :</span>
+                          {(['CELTIIS', 'MTN', 'MOOV'] as const).map((net) => (
+                            <button
+                              key={net}
+                              type="button"
+                              onClick={() => setMobileOperator(net)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                                mobileOperator === net
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                              }`}
+                            >
+                              {net}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-[11px] block py-1">
+                          Une référence de quittance unique sera attribuée automatiquement à ce règlement.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
