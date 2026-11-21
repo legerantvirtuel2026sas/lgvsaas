@@ -120,25 +120,26 @@ export default function StatisticsPage({ params }: { params: { slug: string } })
   const selectPredefinedPeriod = (mode: 'MONTH' | 'QUARTER' | 'YEAR') => {
     setPeriodMode(mode);
     const now = new Date();
-    // Utiliser l'année de référence 2026 si l'année en cours est différente ou selon la configuration
-    const refYear = 2026;
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
 
     if (mode === 'MONTH') {
-      // Mois d'octobre/novembre 2026
-      const start = new Date(refYear, 9, 1); // 1er Octobre 2026
-      const end = new Date(refYear, 10, 30); // 30 Novembre 2026
+      // Mois en cours : du 1er au dernier jour du mois courant (ex: 1er nov au 30 nov)
+      const start = new Date(currentYear, currentMonth, 1);
+      const end = new Date(currentYear, currentMonth + 1, 0);
       setStartDateStr(toInputDateFormat(start));
       setEndDateStr(toInputDateFormat(end));
     } else if (mode === 'QUARTER') {
-      // 4ème Trimestre (Octobre - Décembre 2026)
-      const start = new Date(refYear, 9, 1);
-      const end = new Date(refYear, 11, 31);
+      // Trimestre en cours (ex: T4 = 1er oct au 31 déc)
+      const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
+      const start = new Date(currentYear, quarterStartMonth, 1);
+      const end = new Date(currentYear, quarterStartMonth + 3, 0);
       setStartDateStr(toInputDateFormat(start));
       setEndDateStr(toInputDateFormat(end));
     } else if (mode === 'YEAR') {
-      // Année 2026
-      const start = new Date(refYear, 0, 1);
-      const end = new Date(refYear, 11, 31);
+      // Année en cours (ex: 1er janv au 31 déc)
+      const start = new Date(currentYear, 0, 1);
+      const end = new Date(currentYear, 11, 31);
       setStartDateStr(toInputDateFormat(start));
       setEndDateStr(toInputDateFormat(end));
     }
