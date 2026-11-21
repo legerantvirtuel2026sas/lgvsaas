@@ -50,6 +50,7 @@ import {
   InvoiceLineItem,
   SalesDocType,
   loadEmecefConfig,
+  loadCompanySettings,
 } from '@/lib/sales-store';
 
 export default function SalesPage({ params }: { params: { slug: string } }) {
@@ -1816,6 +1817,11 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                       </div>
                     </div>
                   </div>
+
+                  {/* Mention légale des factures */}
+                  <div className="pt-4 border-t border-gray-100 text-center text-[10px] text-gray-500 italic">
+                    {loadCompanySettings(companySlug).legalNotice || 'Les articles vendus ne sont ni repris ni échangés.'}
+                  </div>
                 </div>
               )}
 
@@ -1938,7 +1944,10 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
                     ) : (
                       <p className="font-bold text-blue-700">FACTURE PROFORMA</p>
                     )}
-                    <p className="pt-1">MERCI DE VOTRE CONFIANCE !</p>
+                    <p className="pt-1 text-[9px] text-gray-500 italic">
+                      {loadCompanySettings(companySlug).legalNotice || 'Les articles vendus ne sont ni repris ni échangés.'}
+                    </p>
+                    <p className="pt-0.5 font-bold">MERCI DE VOTRE CONFIANCE !</p>
                   </div>
                 </div>
               )}

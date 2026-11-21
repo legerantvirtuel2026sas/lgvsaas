@@ -532,6 +532,10 @@ export function recordInvoicePayment(
 // ----------------------------------------------------
 // CONFIGURATION LOCALE DE L'API E-MECEF DGI BÉNIN
 // ----------------------------------------------------
+export const EMECEF_PROD_URL = 'https://sygmef.impots.bj/emcf/api/invoice';
+export const EMECEF_TEST_URL = 'https://developper.impots.bj/sygmef-emcf/api/invoice';
+export const EMECEF_PORTAL_URL = 'https://e-mecef.impots.bj/';
+
 export interface EmecefConfig {
   apiToken: string;
   nim: string;
@@ -543,35 +547,85 @@ export interface EmecefConfig {
 }
 
 export function loadEmecefConfig(companySlug: string): EmecefConfig {
+  const defaults: EmecefConfig = {
+    apiToken: '',
+    nim: 'MCF01002026-AB1',
+    ifu: '0201912345678',
+    mecefUrl: EMECEF_TEST_URL,
+    mode: 'TEST',
+    isConfigured: false,
+  };
+
   if (typeof window === 'undefined') {
-    return {
-      apiToken: '',
-      nim: 'MCF01002026-AB1',
-      ifu: '0201912345678',
-      mecefUrl: 'https://emecef.impots.bj',
-      mode: 'TEST',
-      isConfigured: false,
-    };
+    return defaults;
   }
   try {
     const raw = localStorage.getItem(`lgv_emecef_config_${companySlug}`);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed.mecefUrl === 'https://emecef.impots.bj' || !parsed.mecefUrl) {
+        parsed.mecefUrl = parsed.mode === 'PRODUCTION' ? EMECEF_PROD_URL : EMECEF_TEST_URL;
+      }
+      return { ...defaults, ...parsed };
     }
   } catch {}
-  return {
-    apiToken: '',
-    nim: 'MCF01002026-AB1',
-    ifu: '0201912345678',
-    mecefUrl: 'https://emecef.impots.bj',
-    mode: 'TEST',
-    isConfigured: false,
-  };
+  return defaults;
 }
 
 export function saveEmecefConfig(companySlug: string, config: EmecefConfig): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(`lgv_emecef_config_${companySlug}`, JSON.stringify(config));
+  } catch {}
+}
+
+// ----------------------------------------------------
+// COORDONNÉES ET PARAMÈTRES FISCAUX DE L'ENTREPRISE
+// ----------------------------------------------------
+export interface CompanySettingsData {
+  legalName: string;
+  tradeName: string;
+  rccm: string;
+  address: string;
+  phone: string;
+  email: string;
+  legalNotice: string;
+  vatRate: number;
+  aibRateGoodsWithIfu: number;
+  aibRateGoodsWithoutIfu: number;
+  aibRateServicesWithIfu: number;
+  aibRateServicesWithoutIfu: number;
+}
+
+export function loadCompanySettings(companySlug: string): CompanySettingsData {
+  const defaults: CompanySettingsData = {
+    legalName: companySlug.replace(/-/g, ' ').toUpperCase(),
+    tradeName: 'ABP TECH SOLUTIONS',
+    rccm: 'RB/COT/20 B 14589',
+    address: 'Avenue Jean-Paul II, Akpakpa, Cotonou, Bénin',
+    phone: '+229 21 31 20 00',
+    email: 'direction@abp.bj',
+    legalNotice: 'Les articles vendus ne sont ni repris ni échangés.',
+    vatRate: 18,
+    aibRateGoodsWithIfu: 1,
+    aibRateGoodsWithoutIfu: 5,
+    aibRateServicesWithIfu: 3,
+    aibRateServicesWithoutIfu: 5,
+  };
+
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const raw = localStorage.getItem(`lgv_company_settings_${companySlug}`);
+    if (raw) {
+      return { ...defaults, ...JSON.parse(raw) };
+    }
+  } catch {}
+  return defaults;
+}
+
+export function saveCompanySettings(companySlug: string, settings: CompanySettingsData): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`lgv_company_settings_${companySlug}`, JSON.stringify(settings));
   } catch {}
 }
