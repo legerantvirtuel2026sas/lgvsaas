@@ -528,3 +528,50 @@ export function recordInvoicePayment(
 
   return { updatedInvoice, newInstallment };
 }
+
+// ----------------------------------------------------
+// CONFIGURATION LOCALE DE L'API E-MECEF DGI BÉNIN
+// ----------------------------------------------------
+export interface EmecefConfig {
+  apiToken: string;
+  nim: string;
+  ifu: string;
+  mecefUrl: string;
+  mode: 'TEST' | 'PRODUCTION';
+  lastTestedAt?: string;
+  isConfigured: boolean;
+}
+
+export function loadEmecefConfig(companySlug: string): EmecefConfig {
+  if (typeof window === 'undefined') {
+    return {
+      apiToken: '',
+      nim: 'MCF01002026-AB1',
+      ifu: '0201912345678',
+      mecefUrl: 'https://emecef.impots.bj',
+      mode: 'TEST',
+      isConfigured: false,
+    };
+  }
+  try {
+    const raw = localStorage.getItem(`lgv_emecef_config_${companySlug}`);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return {
+    apiToken: '',
+    nim: 'MCF01002026-AB1',
+    ifu: '0201912345678',
+    mecefUrl: 'https://emecef.impots.bj',
+    mode: 'TEST',
+    isConfigured: false,
+  };
+}
+
+export function saveEmecefConfig(companySlug: string, config: EmecefConfig): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`lgv_emecef_config_${companySlug}`, JSON.stringify(config));
+  } catch {}
+}

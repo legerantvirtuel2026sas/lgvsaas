@@ -49,6 +49,7 @@ import {
   SalesRow,
   InvoiceLineItem,
   SalesDocType,
+  loadEmecefConfig,
 } from '@/lib/sales-store';
 
 export default function SalesPage({ params }: { params: { slug: string } }) {
@@ -330,7 +331,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     let fiscalizedAt: string | undefined;
 
     if (status === 'FISCALIZED') {
-      emecefNim = 'MCF01002026-AB1';
+      const emecefCfg = loadEmecefConfig(companySlug);
+      emecefNim = emecefCfg.nim || 'MCF01002026-AB1';
       const tag = docType === 'EXPORT' ? 'EV' : 'FV';
       const seq = documents.filter((d) => d.status === 'FISCALIZED').length + 1;
       emecefCounters = `${seq}/${seq + 85} ${tag}`;
@@ -455,7 +457,8 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     const doc = documents.find((d) => d.id === docId);
     if (!doc) return;
 
-    const nim = 'MCF01002026-AB1';
+    const emecefCfg = loadEmecefConfig(companySlug);
+    const nim = emecefCfg.nim || 'MCF01002026-AB1';
     const tag = doc.type === 'EXPORT' ? 'EV' : 'FV';
     const seq = documents.filter((d) => d.status === 'FISCALIZED').length + 1;
     const counter = `${seq}/${seq + 85} ${tag}`;
@@ -551,6 +554,9 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
     const now = new Date();
     const fiscalizedAt = `${now.toLocaleDateString('fr-BJ')} à ${now.toLocaleTimeString('fr-BJ', { hour: '2-digit', minute: '2-digit' })}`;
 
+    const emecefCfg = loadEmecefConfig(companySlug);
+    const nim = emecefCfg.nim || 'MCF01002026-AB1';
+
     const updated = documents.map((d) => {
       if (d.id === docId) {
         return {
@@ -558,7 +564,7 @@ export default function SalesPage({ params }: { params: { slug: string } }) {
           status: 'FISCALIZED' as const,
           paidAmount: d.paymentMode === 'A_TERME' ? 0 : d.netToPay,
           remainingAmount: d.paymentMode === 'A_TERME' ? d.netToPay : 0,
-          emecefNim: 'MCF01002026-AB1',
+          emecefNim: nim,
           emecefCounters: counter,
           emecefCode,
           emecefQrUrl: qrUrl,
