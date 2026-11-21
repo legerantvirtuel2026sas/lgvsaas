@@ -11,9 +11,9 @@ export interface SidebarProps {
   userPermissions: string[];
 }
 
-const DEFAULT_WIDTH = 256; // 16rem = w-64
-const MIN_WIDTH = 180;
-const MAX_WIDTH = 480;
+const DEFAULT_WIDTH = 240;
+const MIN_WIDTH = 190;
+const MAX_WIDTH = 265;
 
 export function Sidebar({ companySlug, role, userPermissions }: SidebarProps) {
   const pathname = usePathname();
@@ -21,14 +21,18 @@ export function Sidebar({ companySlug, role, userPermissions }: SidebarProps) {
   const [isResizing, setIsResizing] = React.useState<boolean>(false);
   const sidebarRef = React.useRef<HTMLElement>(null);
 
-  // Charger la largeur personnalisée enregistrée en mémoire locale
+  // Charger la largeur personnalisée enregistrée en mémoire locale (bornée strictement à MAX_WIDTH)
   React.useEffect(() => {
     try {
       const savedWidth = localStorage.getItem('lgv_sidebar_width');
       if (savedWidth) {
         const parsed = parseInt(savedWidth, 10);
-        if (!isNaN(parsed) && parsed >= MIN_WIDTH && parsed <= MAX_WIDTH) {
-          setWidth(parsed);
+        if (!isNaN(parsed)) {
+          const clamped = Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
+          setWidth(clamped);
+          if (clamped !== parsed) {
+            localStorage.setItem('lgv_sidebar_width', String(clamped));
+          }
         }
       }
     } catch {
