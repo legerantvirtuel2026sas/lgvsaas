@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Pencil, Trash2, Lock, Shield, AlertCircle, Plus, Check, Power } from 'lucide-react';
+import { Pencil, Trash2, Lock, Shield, AlertCircle, Plus, Check, Power, Users, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -251,23 +251,54 @@ export default function UsersManagementPage({ params }: { params: { slug: string
       </div>
 
       {/* Quota de postes (Seats) */}
-      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs font-semibold uppercase text-gray-400">Postes autorisés par la licence</span>
-          <div className="flex items-center space-x-3 mt-1">
-            <span className="text-2xl font-black text-gray-900">
-              {usedSeats} / {maxSeats} postes occupés
+      <div className="bg-white p-5 rounded-2xl border border-gray-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100/80 flex items-center justify-center shrink-0 shadow-xs">
+            <Users className="w-6 h-6 text-blue-600" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">
+              Postes autorisés par la licence
             </span>
-            <Badge variant={usedSeats >= maxSeats ? 'destructive' : 'success'}>
-              {usedSeats >= maxSeats ? 'Quota complet' : `${maxSeats - usedSeats} disponibles`}
-            </Badge>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className="text-2xl font-black text-gray-900 tracking-tight">
+                {usedSeats} / {maxSeats}
+              </span>
+              <span className="text-sm font-semibold text-gray-500">
+                postes occupés
+              </span>
+            </div>
           </div>
         </div>
-        <Link href={`/e/${companySlug}/corp/licence`}>
-          <Button variant="outline" size="sm">
-            Augmenter le nombre de postes
-          </Button>
-        </Link>
+
+        {/* Bloc Disponibilité + Bouton d'action parfaitement alignés côte à côte */}
+        <div className="flex items-center gap-3 shrink-0 self-start md:self-auto">
+          {usedSeats >= maxSeats ? (
+            <div className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold shadow-xs whitespace-nowrap">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+              <span>Quota complet (0 disponible)</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2.5 h-10 px-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs whitespace-nowrap">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600"></span>
+              </span>
+              <span>
+                {maxSeats - usedSeats} {maxSeats - usedSeats > 1 ? 'postes disponibles' : 'poste disponible'}
+              </span>
+            </div>
+          )}
+
+          <Link href={`/e/${companySlug}/corp/licence`}>
+            <Button
+              className="h-10 px-4 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm hover:shadow transition-all flex items-center gap-2 shrink-0 whitespace-nowrap border-0"
+            >
+              <PlusCircle className="w-4 h-4 text-white shrink-0" />
+              <span>Augmenter le nombre de postes</span>
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Tableau des collaborateurs */}
