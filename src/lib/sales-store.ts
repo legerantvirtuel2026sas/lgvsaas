@@ -541,6 +541,8 @@ export interface EmecefConfig {
   nim: string;
   ifu: string;
   mecefUrl: string;
+  mecefTestUrl?: string;
+  mecefProdUrl?: string;
   mode: 'TEST' | 'PRODUCTION';
   lastTestedAt?: string;
   isConfigured: boolean;
@@ -552,6 +554,8 @@ export function loadEmecefConfig(companySlug: string): EmecefConfig {
     nim: 'MCF01002026-AB1',
     ifu: '0201912345678',
     mecefUrl: EMECEF_TEST_URL,
+    mecefTestUrl: EMECEF_TEST_URL,
+    mecefProdUrl: EMECEF_PROD_URL,
     mode: 'TEST',
     isConfigured: false,
   };
@@ -566,7 +570,12 @@ export function loadEmecefConfig(companySlug: string): EmecefConfig {
       if (parsed.mecefUrl === 'https://emecef.impots.bj' || !parsed.mecefUrl) {
         parsed.mecefUrl = parsed.mode === 'PRODUCTION' ? EMECEF_PROD_URL : EMECEF_TEST_URL;
       }
-      return { ...defaults, ...parsed };
+      return {
+        ...defaults,
+        mecefTestUrl: parsed.mecefTestUrl || EMECEF_TEST_URL,
+        mecefProdUrl: parsed.mecefProdUrl || EMECEF_PROD_URL,
+        ...parsed,
+      };
     }
   } catch {}
   return defaults;

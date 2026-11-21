@@ -55,9 +55,13 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
   const [nim, setNim] = React.useState('MCF01002026-AB1');
   const [ifu, setIfu] = React.useState('0201912345678');
   const [mode, setMode] = React.useState<'TEST' | 'PRODUCTION'>('TEST');
-  const [mecefUrl, setMecefUrl] = React.useState(EMECEF_TEST_URL);
-  const [isUrlCustomized, setIsUrlCustomized] = React.useState(false);
-  const [isEditingUrl, setIsEditingUrl] = React.useState(false);
+  
+  // Deux URLs distinctes pour chaque environnement avec gestion du déverrouillage au crayon
+  const [testUrl, setTestUrl] = React.useState(EMECEF_TEST_URL);
+  const [prodUrl, setProdUrl] = React.useState(EMECEF_PROD_URL);
+  const [isEditingTestUrl, setIsEditingTestUrl] = React.useState(false);
+  const [isEditingProdUrl, setIsEditingProdUrl] = React.useState(false);
+
   const [isConfigured, setIsConfigured] = React.useState(false);
   const [lastTestedAt, setLastTestedAt] = React.useState<string | null>(null);
 
@@ -101,16 +105,8 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
     setIfu(emecefCfg.ifu || '0201912345678');
     setMode(emecefCfg.mode || 'TEST');
     
-    // Détermination de l'URL par défaut selon le mode
-    const defaultUrlForMode = emecefCfg.mode === 'PRODUCTION' ? EMECEF_PROD_URL : EMECEF_TEST_URL;
-    if (emecefCfg.mecefUrl && emecefCfg.mecefUrl !== 'https://emecef.impots.bj') {
-      setMecefUrl(emecefCfg.mecefUrl);
-      if (emecefCfg.mecefUrl !== defaultUrlForMode) {
-        setIsUrlCustomized(true);
-      }
-    } else {
-      setMecefUrl(defaultUrlForMode);
-    }
+    setTestUrl(emecefCfg.mecefTestUrl || EMECEF_TEST_URL);
+    setProdUrl(emecefCfg.mecefProdUrl || EMECEF_PROD_URL);
 
     setIsConfigured(!!emecefCfg.apiToken && emecefCfg.apiToken.trim().length > 10);
     if (emecefCfg.lastTestedAt) {
@@ -132,24 +128,6 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
     setAibRateServicesWithIfu(compSettings.aibRateServicesWithIfu ?? 3);
     setAibRateServicesWithoutIfu(compSettings.aibRateServicesWithoutIfu ?? 5);
   }, [companySlug, companyDisplayName]);
-
-  // Changement de mode Bac à Sable vs Production (met à jour automatiquement l'URL)
-  const handleModeChange = (newMode: 'TEST' | 'PRODUCTION') => {
-    setMode(newMode);
-    // Si l'utilisateur n'a pas personnalisé l'URL à la main, on applique l'URL officielle correspondante
-    if (!isUrlCustomized) {
-      setMecefUrl(newMode === 'PRODUCTION' ? EMECEF_PROD_URL : EMECEF_TEST_URL);
-    }
-  };
-
-  // Réinitialiser l'URL à la valeur officielle par défaut
-  const handleResetUrlToDefault = () => {
-    const defaultUrl = mode === 'PRODUCTION' ? EMECEF_PROD_URL : EMECEF_TEST_URL;
-    setMecefUrl(defaultUrl);
-    setIsUrlCustomized(false);
-    setIsEditingUrl(false);
-    showToast(`URL réinitialisée à l'adresse DGI officielle (${mode === 'PRODUCTION' ? 'Production' : 'Bac à sable'}).`);
-  };
 
   // Coller depuis le presse-papier
   const handlePasteToken = async () => {
@@ -208,7 +186,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
       setLastTestedAt(nowStr);
 
       if (isLikelyValid) {
-        showToast(`✓ Test de communication DGI réussi (${mode === 'PRODUCTION' ? 'Production' : 'Bac à sable'}) : Clé API e-MECeF valide.`);
+        showToast(`✓ Test de communication DGI réussi (${mode === 'PRODUCTION' ? 'Production' : 'Bac à sable'}) : Clé API e-MECeF active.`);
       } else {
         showToast('⚠️ Clé d’API courte ou invalide. Vérifiez le texte copié depuis la DGI.');
       }
@@ -217,11 +195,14 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
 
   // 1. Sauvegarder uniquement la configuration e-MECeF
   const handleSaveEmecefOnly = () => {
+    const activeUrl = mode === 'PRODUCTION' ? prodUrl.trim() : testUrl.trim();
     const config: EmecefConfig = {
       apiToken: apiToken.trim(),
       nim: nim.trim() || 'MCF01002026-AB1',
       ifu: ifu.trim() || '0201912345678',
-      mecefUrl: mecefUrl.trim() || (mode === 'PRODUCTION' ? EMECEF_PROD_URL : EMECEF_TEST_URL),
+      mecefUrl: activeUrl,
+      mecefTestUrl: testUrl.trim() || EMECEF_TEST_URL,
+      mecefProdUrl: prodUrl.trim() || EMECEF_PROD_URL,
       mode,
       lastTestedAt: lastTestedAt || undefined,
       isConfigured: apiToken.trim().length > 10,
@@ -229,7 +210,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
 
     saveEmecefConfig(companySlug, config);
     setIsConfigured(config.isConfigured);
-    showToast('✓ Paramètres et clé API e-MECeF enregistrés avec succès.');
+    showToast('✓ Configuration e-MECeF (Mode, NIM, IFU et URLs) enregistrée avec succès.');
   };
 
   // 2. Sauvegarder uniquement les coordonnées légales
@@ -263,7 +244,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
     };
 
     saveCompanySettings(companySlug, updated);
-    showToast('✓ Taux fiscaux (TVA, AIB facturé et AIB retenu) enregistrés avec succès.');
+    showToast('✓ Barèmes fiscaux (TVA, AIB facturé et AIB retenu) enregistrés avec succès.');
   };
 
   // 4. Sauvegarder tous les paramètres en un clic
@@ -280,7 +261,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
   };
 
   // =========================================================================
-  // VÉRIFICATION DES DROITS D'ACCÈS (SEULS OWNER ET ADMIN SONT AUTORISÉS)
+  // CONTRÔLE D'ACCÈS RBAC (SEULS OWNER ET ADMIN SONT AUTORISÉS)
   // =========================================================================
   const isAuthorized = currentUserRole === 'OWNER' || currentUserRole === 'ADMIN';
 
@@ -294,7 +275,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Accès restreint aux Paramètres</h1>
             <p className="mt-2 text-sm text-gray-600 leading-relaxed max-w-md mx-auto">
-              Vous n’avez pas les droits nécessaires pour accéder à la configuration générale de l’entreprise ni modifier l’interconnexion e-MECeF de la DGI. Seuls les <strong>administrateurs</strong> et le <strong>propriétaire</strong> sont autorisés à consulter et modifier ces informations.
+              Vous n’avez pas les droits nécessaires pour accéder à la configuration de l’entreprise ni modifier l’interconnexion e-MECeF de la DGI. Seuls les <strong>administrateurs</strong> et le <strong>propriétaire</strong> sont autorisés à consulter et modifier ces informations.
             </p>
           </div>
           <div className="pt-2 flex justify-center gap-3">
@@ -319,7 +300,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
         </div>
       )}
 
-      {/* En-tête de page avec badge embelli */}
+      {/* En-tête de page avec cadre embelli */}
       <div className="border-b border-gray-200 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -352,13 +333,13 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
       {/* SECTION 1 : INTERCONNEXION FISCALE DGI BÉNIN (E-MECEF) */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden">
-        {/* Bandeau d'en-tête de la carte */}
-        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-blue-50/60 to-indigo-50/40">
-          <div className="flex items-start gap-3.5">
+        {/* Bandeau d'en-tête de la boîte e-MECeF avec bouton Portail DGI repositionné sous le texte */}
+        <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50/60 to-indigo-50/40">
+          <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
               <Key className="w-6 h-6" />
             </div>
-            <div>
+            <div className="space-y-2 flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-gray-900">Interconnexion Fiscale DGI Bénin (e-MECeF)</h2>
                 {isConfigured ? (
@@ -373,23 +354,23 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-gray-600 mt-1">
+              <p className="text-xs text-gray-600 leading-relaxed">
                 La clé API e-MECeF générée par la Direction Générale des Impôts (DGI) permet la certification et la normalisation en direct de chaque facture de vente.
               </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {/* Bouton vers le portail officiel DGI e-MECeF avec tiret exact */}
-            <a
-              href={EMECEF_PORTAL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 bg-white px-3.5 py-2 rounded-xl border border-blue-200 shadow-2xs hover:shadow-xs transition-all shrink-0"
-            >
-              <span>Portail DGI e-MECeF</span>
-              <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
-            </a>
+              {/* Bouton Portail DGI repositionné ICI : bien cadré, lisible et jamais rogné */}
+              <div className="pt-1">
+                <a
+                  href={EMECEF_PORTAL_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-xs font-bold text-blue-700 bg-white hover:bg-blue-50 px-3.5 py-2 rounded-xl border border-blue-200 shadow-2xs hover:shadow-xs transition-all"
+                >
+                  <span>Accéder au Portail officiel DGI e-MECeF ({EMECEF_PORTAL_URL})</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
+                </a>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -411,7 +392,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
               2. Rendez-vous dans la rubrique <strong>Mes API / Clés d'accès machine</strong>, puis copiez le jeton de sécurité généré pour votre entreprise.
             </p>
             <p>
-              3. <strong>Collez ce jeton ci-dessous</strong> dans le champ multiligne et cliquez sur <em>Enregistrer les configurations e-MECeF</em>. Lors de chaque vente, LGV utilisera ce jeton pour se connecter automatiquement aux serveurs de la DGI afin de déclarer et normaliser la facture.
+              3. <strong>Collez ce jeton ci-dessous</strong> dans le champ multiligne et cliquez sur <em>Enregistrer les configurations e-MECeF</em>. Lors de chaque vente, LGV transmettra la facture à l'URL sélectionnée pour obtenir le code fiscal officiel et le QR-Code certifié.
             </p>
           </div>
 
@@ -495,151 +476,223 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
             </div>
           </div>
 
-          {/* LIGNE 1 ALIGNÉE : NUMÉRO D'IDENTIFICATION MACHINE (NIM) & NUMÉRO IFU */}
+          {/* LIGNE 1 PARFAITEMENT ALIGNÉE : NUMÉRO IDENTIFICATION MACHINE (NIM) & NUMÉRO IFU */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
-            <div className="flex flex-col justify-between">
-              <div>
-                <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
-                  Numéro d'Identification de la Machine (NIM)
-                </label>
-                <Input
-                  value={nim}
-                  onChange={(e) => setNim(e.target.value)}
-                  placeholder="Ex: MCF01002026-AB1"
-                  className="font-mono text-xs uppercase h-10"
-                />
-              </div>
-              <span className="text-[11px] text-gray-500 mt-1.5 block">
+            <div>
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
+                Numéro d'Identification de la Machine (NIM)
+              </label>
+              <Input
+                value={nim}
+                onChange={(e) => setNim(e.target.value)}
+                placeholder="Ex: MCF01002026-AB1"
+                className="font-mono text-xs uppercase h-10"
+              />
+              <p className="text-[11px] text-gray-500 mt-1.5">
                 Identifiant unique de votre machine virtuelle e-MCF attribué par la DGI.
-              </span>
+              </p>
             </div>
 
-            <div className="flex flex-col justify-between">
-              <div>
-                <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
-                  Numéro IFU déclarant DGI
-                </label>
-                <Input
-                  value={ifu}
-                  onChange={(e) => setIfu(e.target.value)}
-                  placeholder="Ex: 0201912345678"
-                  className="font-mono text-xs h-10"
-                />
-              </div>
-              <span className="text-[11px] text-gray-500 mt-1.5 block">
+            <div>
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
+                Numéro IFU déclarant DGI
+              </label>
+              <Input
+                value={ifu}
+                onChange={(e) => setIfu(e.target.value)}
+                placeholder="Ex: 0201912345678"
+                className="font-mono text-xs h-10"
+              />
+              <p className="text-[11px] text-gray-500 mt-1.5">
                 Numéro IFU à 13 chiffres de l'entreprise enregistré auprès de la DGI.
-              </span>
+              </p>
             </div>
           </div>
 
-          {/* LIGNE 2 ALIGNÉE : CHOIX DU MODE (TEST/PROD) & URL DE SERVICE AVEC BOUTON CRAYON */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
-            {/* Colonne 1 : Choix du Mode */}
-            <div>
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
-                Environnement e-MECeF
-              </label>
-              <div className="grid grid-cols-2 gap-2.5 h-10">
+          {/* ========================================================================= */}
+          {/* LIGNES D'ENVIRONNEMENTS SÉPARÉES : BAC À SABLE ET PRODUCTION EN 2 LIGNES */}
+          {/* ========================================================================= */}
+          <div className="space-y-4 pt-2">
+            <span className="text-xs font-bold text-gray-800 uppercase tracking-wide block">
+              Sélection de l'environnement actif & URLs de service e-MECeF
+            </span>
+
+            {/* LIGNE 1 : BAC À SABLE (TEST) + URL DGI TEST + CRAYON */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              mode === 'TEST'
+                ? 'bg-amber-50/60 border-amber-300 ring-2 ring-amber-200/80 shadow-xs'
+                : 'bg-gray-50/50 border-gray-200'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                {/* Bouton sélecteur Bac à Sable plus large et carré */}
                 <button
                   type="button"
-                  onClick={() => handleModeChange('TEST')}
-                  className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
+                  onClick={() => setMode('TEST')}
+                  className={`w-full sm:w-52 h-12 rounded-xl border px-3 text-xs font-bold transition-all flex items-center justify-between gap-2 shrink-0 ${
                     mode === 'TEST'
-                      ? 'bg-amber-50 border-amber-300 text-amber-900 ring-2 ring-amber-200 shadow-2xs'
-                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                      ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
-                  <span>Bac à Sable (Test)</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full shrink-0 ${mode === 'TEST' ? 'bg-white' : 'bg-amber-500'}`} />
+                    <span className="text-left leading-tight">
+                      Bac à Sable
+                      <span className="block text-[10px] font-normal opacity-90">(Mode Test)</span>
+                    </span>
+                  </div>
+                  {mode === 'TEST' && (
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-amber-600 px-1.5 py-0.5 rounded">
+                      Actif
+                    </span>
+                  )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleModeChange('PRODUCTION')}
-                  className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 ${
-                    mode === 'PRODUCTION'
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 ring-2 ring-emerald-200 shadow-2xs'
-                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0"></span>
-                  <span>Production (Réel)</span>
-                </button>
+                {/* Champ d'URL de Test + Bouton Crayon */}
+                <div className="flex-1 flex items-center gap-2 min-w-0">
+                  <div className="relative flex-1">
+                    <Input
+                      value={testUrl}
+                      onChange={(e) => setTestUrl(e.target.value)}
+                      disabled={!isEditingTestUrl}
+                      placeholder={EMECEF_TEST_URL}
+                      className={`font-mono text-xs h-12 pr-9 ${
+                        !isEditingTestUrl
+                          ? 'bg-white/80 text-gray-700 cursor-not-allowed border-gray-300'
+                          : 'bg-white border-blue-400 ring-2 ring-blue-100'
+                      }`}
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      {isEditingTestUrl ? <Unlock className="w-4 h-4 text-blue-600" /> : <Lock className="w-4 h-4" />}
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsEditingTestUrl(!isEditingTestUrl)}
+                    className={`h-12 w-12 px-0 rounded-xl shrink-0 flex items-center justify-center transition-all ${
+                      isEditingTestUrl
+                        ? 'bg-blue-50 text-blue-700 border-blue-300 ring-2 ring-blue-100'
+                        : 'text-gray-700 hover:text-blue-700 hover:bg-blue-50 border-gray-300 bg-white'
+                    }`}
+                    title={isEditingTestUrl ? 'Verrouiller l’URL' : "Modifier manuellement l'URL de test"}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-              <span className="text-[11px] text-gray-500 mt-1.5 block">
-                {mode === 'PRODUCTION'
-                  ? 'Mode actif : Factures déclarées et certifiées directement à la DGI.'
-                  : 'Mode simulation : Aucune déclaration fiscale officielle générée.'}
-              </span>
-            </div>
 
-            {/* Colonne 2 : URL du service d'API avec Crayon de déverrouillage */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block">
-                  URL du service d'API e-MECeF
-                </label>
-                {isUrlCustomized && (
+              {/* Note explicative sous la ligne test */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-amber-800 gap-1 pt-2">
+                <span>
+                  Mode simulation : Les factures générées en mode test n'ont aucune valeur fiscale officielle. Idéal pour les essais et la formation.
+                </span>
+                {testUrl !== EMECEF_TEST_URL && (
                   <button
                     type="button"
-                    onClick={handleResetUrlToDefault}
-                    className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"
+                    onClick={() => {
+                      setTestUrl(EMECEF_TEST_URL);
+                      setIsEditingTestUrl(false);
+                      showToast('URL Bac à sable restaurée par défaut.');
+                    }}
+                    className="text-blue-700 hover:underline font-semibold shrink-0"
                   >
-                    Réinitialiser par défaut
+                    Rétablir l’URL test officielle
                   </button>
                 )}
               </div>
+            </div>
 
-              <div className="flex items-center gap-1.5">
-                <div className="relative flex-1">
-                  <Input
-                    value={mecefUrl}
-                    onChange={(e) => {
-                      setMecefUrl(e.target.value);
-                      setIsUrlCustomized(true);
-                    }}
-                    disabled={!isEditingUrl}
-                    placeholder="https://..."
-                    className={`font-mono text-xs h-10 pr-8 ${
-                      !isEditingUrl ? 'bg-gray-100 text-gray-600 cursor-not-allowed border-gray-200' : 'bg-white'
-                    }`}
-                  />
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
-                    {isEditingUrl ? <Unlock className="w-3.5 h-3.5 text-blue-600" /> : <Lock className="w-3.5 h-3.5" />}
-                  </div>
-                </div>
-
-                {/* Bouton Crayon pour autoriser la modification */}
-                <Button
+            {/* LIGNE 2 : PRODUCTION (RÉEL DGI) + URL DGI PROD + CRAYON */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              mode === 'PRODUCTION'
+                ? 'bg-emerald-50/60 border-emerald-300 ring-2 ring-emerald-200/80 shadow-xs'
+                : 'bg-gray-50/50 border-gray-200'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                {/* Bouton sélecteur Production plus large et carré */}
+                <button
                   type="button"
-                  variant="outline"
-                  onClick={() => setIsEditingUrl(!isEditingUrl)}
-                  className={`h-10 px-3 rounded-xl flex items-center justify-center transition-all ${
-                    isEditingUrl
-                      ? 'bg-blue-50 text-blue-700 border-blue-300 ring-2 ring-blue-100'
-                      : 'text-gray-700 hover:text-blue-700 hover:bg-blue-50'
+                  onClick={() => setMode('PRODUCTION')}
+                  className={`w-full sm:w-52 h-12 rounded-xl border px-3 text-xs font-bold transition-all flex items-center justify-between gap-2 shrink-0 ${
+                    mode === 'PRODUCTION'
+                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'
                   }`}
-                  title={isEditingUrl ? 'Verrouiller le champ' : "Modifier manuellement l'URL officielle"}
                 >
-                  <Pencil className="w-4 h-4" />
-                </Button>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full shrink-0 ${mode === 'PRODUCTION' ? 'bg-white' : 'bg-emerald-600'}`} />
+                    <span className="text-left leading-tight">
+                      Production DGI
+                      <span className="block text-[10px] font-normal opacity-90">(Mode Réel)</span>
+                    </span>
+                  </div>
+                  {mode === 'PRODUCTION' && (
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-700 px-1.5 py-0.5 rounded">
+                      Actif
+                    </span>
+                  )}
+                </button>
+
+                {/* Champ d'URL de Production + Bouton Crayon */}
+                <div className="flex-1 flex items-center gap-2 min-w-0">
+                  <div className="relative flex-1">
+                    <Input
+                      value={prodUrl}
+                      onChange={(e) => setProdUrl(e.target.value)}
+                      disabled={!isEditingProdUrl}
+                      placeholder={EMECEF_PROD_URL}
+                      className={`font-mono text-xs h-12 pr-9 ${
+                        !isEditingProdUrl
+                          ? 'bg-white/80 text-gray-700 cursor-not-allowed border-gray-300'
+                          : 'bg-white border-blue-400 ring-2 ring-blue-100'
+                      }`}
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                      {isEditingProdUrl ? <Unlock className="w-4 h-4 text-blue-600" /> : <Lock className="w-4 h-4" />}
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsEditingProdUrl(!isEditingProdUrl)}
+                    className={`h-12 w-12 px-0 rounded-xl shrink-0 flex items-center justify-center transition-all ${
+                      isEditingProdUrl
+                        ? 'bg-blue-50 text-blue-700 border-blue-300 ring-2 ring-blue-100'
+                        : 'text-gray-700 hover:text-blue-700 hover:bg-blue-50 border-gray-300 bg-white'
+                    }`}
+                    title={isEditingProdUrl ? 'Verrouiller l’URL' : "Modifier manuellement l'URL de production"}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
 
-              <span className="text-[11px] text-gray-500 mt-1.5 block">
-                {isEditingUrl ? (
-                  <span className="text-blue-700 font-medium">
-                    Modification manuelle autorisée (réservée aux administrateurs si l’État change l’URL).
-                  </span>
-                ) : (
-                  <span>
-                    URL officielle DGI définie par défaut. Cliquez sur le crayon pour modifier.
-                  </span>
+              {/* Note explicative sous la ligne production */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-emerald-800 gap-1 pt-2">
+                <span>
+                  Mode officiel actif : Chaque facture validée est directement certifiée et transmise en direct aux serveurs de la DGI.
+                </span>
+                {prodUrl !== EMECEF_PROD_URL && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProdUrl(EMECEF_PROD_URL);
+                      setIsEditingProdUrl(false);
+                      showToast('URL Production restaurée par défaut.');
+                    }}
+                    className="text-blue-700 hover:underline font-semibold shrink-0"
+                  >
+                    Rétablir l’URL production officielle
+                  </button>
                 )}
-              </span>
+              </div>
             </div>
           </div>
 
-          {/* Boutons d'action de la section e-MECeF */}
+          {/* Boutons d'action de la section e-MECeF (Tester & Enregistrer) */}
           <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Button
@@ -673,10 +726,10 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* SECTION 2 : COORDONNÉES LÉGALES & MENTION LÉGALE DES FACTURES */}
+      {/* SECTION 2 : COORDONNÉES GÉNÉRALES & MENTION LÉGALE DES FACTURES */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6 space-y-5">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4 flex-wrap gap-3">
+        <div className="border-b border-gray-100 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
               <Building2 className="w-5 h-5" />
@@ -688,19 +741,9 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
               </p>
             </div>
           </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleSaveLegalDetailsOnly}
-            className="h-9 px-4 rounded-xl text-xs font-bold text-purple-700 border-purple-200 hover:bg-purple-50 flex items-center gap-1.5"
-          >
-            <Save className="w-3.5 h-3.5" />
-            Enregistrer les coordonnées
-          </Button>
         </div>
 
-        {/* Grille 2 colonnes parfaitement alignée */}
+        {/* Grille 2 colonnes avec libellés sur une seule ligne (RCCM simplifié pour alignement parfait) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
@@ -728,7 +771,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
 
           <div>
             <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-1.5">
-              Registre du Commerce et du Crédit Mobilier (RCCM)
+              RCCM
             </label>
             <Input
               value={rccm}
@@ -775,7 +818,7 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
           </div>
         </div>
 
-        {/* NOUVEAU : CHAMP MENTION LÉGALE DES FACTURES */}
+        {/* CHAMP MENTION LÉGALE SUR LES FACTURES */}
         <div className="pt-2 border-t border-gray-100">
           <label className="text-xs font-bold text-gray-800 uppercase tracking-wide block mb-1.5 flex items-center gap-1.5">
             <FileText className="w-3.5 h-3.5 text-purple-600" />
@@ -787,17 +830,29 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
             placeholder="Ex: Les articles vendus ne sont ni repris ni échangés."
             className="text-xs h-10 font-medium"
           />
-          <span className="text-[11px] text-gray-500 mt-1.5 block">
+          <p className="text-[11px] text-gray-500 mt-1.5">
             Mention légale obligatoire imprimée au bas de toutes les factures de vente, tickets et proformas de votre entreprise.
-          </span>
+          </p>
+        </div>
+
+        {/* Bouton d'enregistrement repositionné APRÈS la mention légale */}
+        <div className="pt-4 border-t border-gray-100 flex justify-end">
+          <Button
+            type="button"
+            onClick={handleSaveLegalDetailsOnly}
+            className="h-10 px-5 rounded-xl font-bold text-xs bg-purple-700 hover:bg-purple-800 text-white shadow-sm flex items-center gap-2"
+          >
+            <Save className="w-4 h-4" />
+            Enregistrer les coordonnées
+          </Button>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* SECTION 3 : PARAMÈTRES FISCAUX PERSONNALISABLES (TVA & BARÈMES AIB BÉNIN) */}
+      {/* SECTION 3 : PARAMÈTRES FISCAUX CONFIGURABLES (TVA & BARÈMES AIB BÉNIN) */}
       {/* ========================================================================= */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6 space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4 flex-wrap gap-3">
+        <div className="border-b border-gray-100 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
               <Sliders className="w-5 h-5" />
@@ -805,169 +860,207 @@ export default function SettingsPage({ params }: { params: { slug: string } }) {
             <div>
               <h2 className="text-base font-bold text-gray-900">Paramètres fiscaux & Taux configurables</h2>
               <p className="text-xs text-gray-500">
-                Définissez les taux par défaut (TVA, AIB facturé et AIB retenu) modifiables en cas d'évolution de la législation fiscale béninoise.
+                Définissez les taux applicables modifiables en cas d'évolution de la législation fiscale béninoise (CGI).
               </p>
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleSaveFiscalOnly}
-            className="h-9 px-4 rounded-xl text-xs font-bold text-emerald-700 border-emerald-200 hover:bg-emerald-50 flex items-center gap-1.5"
-          >
-            <Save className="w-3.5 h-3.5" />
-            Enregistrer les paramètres fiscaux
-          </Button>
-        </div>
-
-        {/* Grille des taux fiscaux paramétrables */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Taux TVA */}
-          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-2 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 uppercase">Taux TVA Standard</span>
-                <Badge variant="outline" className="text-[10px] bg-white">Groupe B</Badge>
-              </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Taxe sur la Valeur Ajoutée normale au Bénin (CGI).
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={vatRate}
-                onChange={(e) => setVatRate(Number(e.target.value))}
-                className="font-mono font-bold text-base h-10 w-24 text-right bg-white"
-              />
-              <span className="font-bold text-gray-700 text-sm">%</span>
-            </div>
-          </div>
-
-          {/* AIB Ventes d'Articles - Avec IFU */}
-          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-2 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 uppercase">AIB Vente (Avec IFU)</span>
-                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">Facturé</Badge>
-              </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Acompte facturé sur vente de biens à un client immatriculé.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={aibRateGoodsWithIfu}
-                onChange={(e) => setAibRateGoodsWithIfu(Number(e.target.value))}
-                className="font-mono font-bold text-base h-10 w-24 text-right bg-white"
-              />
-              <span className="font-bold text-gray-700 text-sm">%</span>
-            </div>
-          </div>
-
-          {/* AIB Ventes d'Articles - Sans IFU */}
-          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-2 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 uppercase">AIB Vente (Sans IFU)</span>
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Facturé</Badge>
-              </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Acompte majoré pour client non immatriculé.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={aibRateGoodsWithoutIfu}
-                onChange={(e) => setAibRateGoodsWithoutIfu(Number(e.target.value))}
-                className="font-mono font-bold text-base h-10 w-24 text-right bg-white"
-              />
-              <span className="font-bold text-gray-700 text-sm">%</span>
-            </div>
-          </div>
-
-          {/* AIB Prestations de services - Avec IFU (NOUVEAU : Retenue à la source 3%) */}
-          <div className="p-4 rounded-xl border border-purple-200 bg-purple-50/30 space-y-2 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-900 uppercase">AIB Prestations (Avec IFU)</span>
-                <Badge variant="outline" className="text-[10px] bg-purple-100 text-purple-800 border-purple-300">Retenu 3%</Badge>
-              </div>
-              <p className="text-[11px] text-gray-600 mt-1">
-                AIB retenu à la source par le client sur les prestations fournies.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={aibRateServicesWithIfu}
-                onChange={(e) => setAibRateServicesWithIfu(Number(e.target.value))}
-                className="font-mono font-bold text-base h-10 w-24 text-right bg-white border-purple-300"
-              />
-              <span className="font-bold text-purple-900 text-sm">%</span>
-            </div>
-          </div>
-
-          {/* AIB Prestations de services - Sans IFU */}
-          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-2 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 uppercase">AIB Prestations (Sans IFU)</span>
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Retenu 5%</Badge>
-              </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Retenue majorée en l’absence de numéro IFU valide.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={aibRateServicesWithoutIfu}
-                onChange={(e) => setAibRateServicesWithoutIfu(Number(e.target.value))}
-                className="font-mono font-bold text-base h-10 w-24 text-right bg-white"
-              />
-              <span className="font-bold text-gray-700 text-sm">%</span>
-            </div>
-          </div>
-
-          {/* Devise & Fuseau horaire Bénin */}
-          <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50 space-y-1 flex flex-col justify-between">
-            <div>
-              <span className="text-xs font-bold text-gray-700 uppercase block">Devise & Fuseau Horaire</span>
-              <p className="text-[11px] text-gray-500 mt-1">Norme monétaire et légale officielle du Bénin.</p>
-            </div>
-            <div className="pt-2 text-xs font-bold text-gray-800 space-y-1">
-              <p>Devise : <span className="font-mono text-blue-700">FCFA (XOF)</span></p>
-              <p>Zone : <span className="font-mono text-gray-600">Africa/Porto-Novo (UTC+1)</span></p>
             </div>
           </div>
         </div>
 
-        {/* Bouton global du bas */}
+        {/* Grille des barèmes fiscaux avec design soigné, sans badges décalés */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          
+          {/* CARTE 1 : TVA STANDARD (GROUPE B) */}
+          <div className="p-5 rounded-2xl border border-gray-200/90 bg-gray-50/60 flex flex-col justify-between space-y-4">
+            <div>
+              <span className="text-xs font-bold text-gray-900 uppercase tracking-wide block">
+                TVA Standard (Groupe B - Taxable)
+              </span>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                Taxe sur la Valeur Ajoutée normale au Bénin applicable aux ventes de biens et services.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-gray-200/80">
+              <span className="text-xs font-semibold text-gray-600">Taux légal :</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={vatRate}
+                  onChange={(e) => setVatRate(Number(e.target.value))}
+                  className="font-mono font-bold text-base h-10 w-20 text-right bg-white border-gray-300"
+                />
+                <span className="font-bold text-gray-800 text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARTE 2 : AIB VENTE DE BIENS (AVEC IFU) */}
+          <div className="p-5 rounded-2xl border border-blue-200/90 bg-blue-50/30 flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-blue-950 uppercase tracking-wide">
+                  AIB Vente (Avec IFU)
+                </span>
+                <span className="text-[11px] font-bold text-blue-800 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full shrink-0">
+                  Facturé 1%
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                Acompte facturé sur vente d'articles lorsque le client dispose d’un numéro IFU actif.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-blue-100">
+              <span className="text-xs font-semibold text-gray-600">Taux facturé :</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={aibRateGoodsWithIfu}
+                  onChange={(e) => setAibRateGoodsWithIfu(Number(e.target.value))}
+                  className="font-mono font-bold text-base h-10 w-20 text-right bg-white border-blue-300"
+                />
+                <span className="font-bold text-blue-950 text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARTE 3 : AIB VENTE DE BIENS (SANS IFU) */}
+          <div className="p-5 rounded-2xl border border-amber-200/90 bg-amber-50/30 flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                  AIB Vente (Sans IFU)
+                </span>
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+                  Facturé 5%
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                Acompte majoré facturé sur vente d'articles lorsque le client n'a pas d'IFU.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-amber-100">
+              <span className="text-xs font-semibold text-gray-600">Taux facturé :</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={aibRateGoodsWithoutIfu}
+                  onChange={(e) => setAibRateGoodsWithoutIfu(Number(e.target.value))}
+                  className="font-mono font-bold text-base h-10 w-20 text-right bg-white border-amber-300"
+                />
+                <span className="font-bold text-amber-950 text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARTE 4 : AIB PRESTATION DE SERVICES (AVEC IFU) - RETENUE 3% */}
+          <div className="p-5 rounded-2xl border border-purple-200/90 bg-purple-50/30 flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-purple-950 uppercase tracking-wide">
+                  AIB Prestation (Avec IFU)
+                </span>
+                <span className="text-[11px] font-bold text-purple-800 bg-purple-100 border border-purple-200 px-2 py-0.5 rounded-full shrink-0">
+                  Retenue 3%
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                AIB retenu à la source par le client sur les prestations facturées par votre entreprise.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-purple-100">
+              <span className="text-xs font-semibold text-gray-600">Taux retenu :</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={aibRateServicesWithIfu}
+                  onChange={(e) => setAibRateServicesWithIfu(Number(e.target.value))}
+                  className="font-mono font-bold text-base h-10 w-20 text-right bg-white border-purple-300"
+                />
+                <span className="font-bold text-purple-950 text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARTE 5 : AIB PRESTATION DE SERVICES (SANS IFU) - RETENUE 5% */}
+          <div className="p-5 rounded-2xl border border-rose-200/90 bg-rose-50/30 flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-rose-950 uppercase tracking-wide">
+                  AIB Prestation (Sans IFU)
+                </span>
+                <span className="text-[11px] font-bold text-rose-800 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-full shrink-0">
+                  Retenue 5%
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                Retenue majorée en cas de prestation réalisée sans présentation de numéro IFU.
+              </p>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-rose-100">
+              <span className="text-xs font-semibold text-gray-600">Taux retenu :</span>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={aibRateServicesWithoutIfu}
+                  onChange={(e) => setAibRateServicesWithoutIfu(Number(e.target.value))}
+                  className="font-mono font-bold text-base h-10 w-20 text-right bg-white border-rose-300"
+                />
+                <span className="font-bold text-rose-950 text-sm">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CARTE 6 : DEVISE & FUSEAU HORAIRE LÉGAL */}
+          <div className="p-5 rounded-2xl border border-gray-200/90 bg-gray-50/60 flex flex-col justify-between space-y-4">
+            <div>
+              <span className="text-xs font-bold text-gray-900 uppercase tracking-wide block">
+                Devise & Fuseau Horaire
+              </span>
+              <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                Paramètres monétaires et horodatage certifié sur les transactions e-MECeF.
+              </p>
+            </div>
+            <div className="pt-2 border-t border-gray-200/80 text-xs font-bold text-gray-800 space-y-1">
+              <p>Devise : <span className="font-mono text-blue-700">FCFA (Franc CFA - XOF)</span></p>
+              <p>Fuseau : <span className="font-mono text-gray-600">Africa/Porto-Novo (UTC+1)</span></p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Bouton d'enregistrement repositionné APRÈS tous les champs fiscaux */}
         <div className="pt-4 border-t border-gray-100 flex justify-end">
           <Button
             type="button"
-            onClick={handleSaveAll}
-            disabled={isSaving}
-            className="h-10 px-6 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm flex items-center gap-2"
+            onClick={handleSaveFiscalOnly}
+            className="h-10 px-5 rounded-xl font-bold text-xs bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm flex items-center gap-2"
           >
-            {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Enregistrer tous les paramètres
+            <Save className="w-4 h-4" />
+            Enregistrer les paramètres fiscaux
           </Button>
         </div>
+      </div>
+
+      {/* BOUTON GLOBAL TOUT EN BAS */}
+      <div className="pt-2 flex justify-end">
+        <Button
+          type="button"
+          onClick={handleSaveAll}
+          disabled={isSaving}
+          className="h-11 px-6 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-md flex items-center gap-2"
+        >
+          {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Enregistrer tous les paramètres
+        </Button>
       </div>
     </div>
   );
