@@ -5,7 +5,6 @@ import {
   Pencil,
   Trash2,
   Lock,
-  AlertCircle,
   Plus,
   Check,
   FileText,
@@ -18,85 +17,71 @@ import {
   Wallet,
   Percent,
   Calculator,
+  Calendar,
+  CreditCard,
+  Search,
+  Filter,
+  Eye,
+  Power,
+  DollarSign,
+  AlertCircle,
+  HelpCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTable, ColumnDef } from '@/components/data-table/data-table';
 import { formatFcfa } from '@/server/domain/money';
 import { calculatePayslip, calculateBeninIts } from '@/server/domain/payroll';
+import {
+  EmployeeItem,
+  PayrollRunItem,
+  PayslipItem,
+  loadEmployees,
+  saveEmployees,
+  loadPayrollRuns,
+  savePayrollRuns,
+  EmployeeAdvance,
+} from '@/lib/payroll-store';
 
-interface EmployeeRow extends Record<string, unknown> {
-  id: string;
-  registrationNumber: string;
-  fullName: string;
-  jobTitle: string;
-  baseSalary: number;
-  cnssNumber: string;
-  phone?: string;
-  hireDate: string;
-  hasPayslips?: boolean;
-}
+import { EmployeeModal } from './components/EmployeeModal';
+import { EmployeeProfileModal } from './components/EmployeeProfileModal';
+import { PayrollRunWizardModal } from './components/PayrollRunWizardModal';
+import { PayslipModal } from './components/PayslipModal';
+import { PayrollHistoryModal } from './components/PayrollHistoryModal';
+import { PayrollPaymentsModal } from './components/PayrollPaymentsModal';
 
 export default function EmployeesPage({ params }: { params: { slug: string } }) {
   const companySlug = params.slug;
   const companyDisplayName = companySlug.replace(/-/g, ' ').toUpperCase();
 
-  const [employees, setEmployees] = React.useState<EmployeeRow[]>([
-    {
-      id: 'emp_1',
-      registrationNumber: 'EMP-001',
-      fullName: 'Romaric KOUASSI',
-      jobTitle: 'Responsable Commercial',
-      baseSalary: 250000,
-      cnssNumber: '1234567890',
-      phone: '+229 97 11 22 33',
-      hireDate: '01/02/2024',
-      hasPayslips: true,
-    },
-    {
-      id: 'emp_2',
-      registrationNumber: 'EMP-002',
-      fullName: 'Béatrice SOGLO',
-      jobTitle: 'Chargée de Clientèle',
-      baseSalary: 120000,
-      cnssNumber: '9876543210',
-      phone: '+229 96 33 44 55',
-      hireDate: '15/06/2025',
-      hasPayslips: true,
-    },
-    {
-      id: 'emp_3',
-      registrationNumber: 'EMP-003',
-      fullName: 'Gérard HOUNGBEDJI',
-      jobTitle: 'Agent de Magasin / Stock',
-      baseSalary: 65000,
-      cnssNumber: '5566778899',
-      phone: '+229 95 66 77 88',
-      hireDate: '01/01/2026',
-      hasPayslips: false,
-    },
-  ]);
+  // Données persistées
+  const [employees, setEmployees] = React.useState<EmployeeItem[]>([]);
+  const [runs, setRuns] = React.useState<PayrollRunItem[]>([]);
+  const [isLoaded, setIsLoaded] = React.useState(false);
 
-  // Modal d'ajout
-  const [showAddModal, setShowAddModal] = React.useState(false);
-  const [matricule, setMatricule] = React.useState('EMP-004');
-  const [fullName, setFullName] = React.useState('');
-  const [jobTitle, setJobTitle] = React.useState('');
-  const [baseSalary, setBaseSalary] = React.useState('80000');
-  const [cnss, setCnss] = React.useState('');
-  const [phone, setPhone] = React.useState('');
+  // Recherche et filtres
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [filterDepartment, setFilterDepartment] = React.useState('ALL');
+  const [filterStatus, setFilterStatus] = React.useState<'ALL' | 'ACTIF' | 'SUSPENDU' | 'SORTI'>('ALL');
 
-  // Modal d'édition
-  const [editingEmployee, setEditingEmployee] = React.useState<EmployeeRow | null>(null);
-  const [editFullName, setEditFullName] = React.useState('');
-  const [editJobTitle, setEditJobTitle] = React.useState('');
-  const [editBaseSalary, setEditBaseSalary] = React.useState('');
-  const [editCnss, setEditCnss] = React.useState('');
-  const [editPhone, setEditPhone] = React.useState('');
+  // Modales
+  const [showEmployeeModal, setShowEmployeeModal] = React.useState(false);
+  const [editingEmployee, setEditingEmployee] = React.useState<EmployeeItem | null>(null);
 
-  // Modales de paie
-  const [viewingPayslipEmployee, setViewingPayslipEmployee] = React.useState<EmployeeRow | null>(null);
-  const [showPayrollRunModal, setShowPayrollRunModal] = React.useState(false);
+  const [showProfileModal, setShowProfileModal] = React.useState(false);
+  const [selectedProfileEmployee, setSelectedProfileEmployee] = React.useState<EmployeeItem | null>(null);
+
+  const [showWizardModal, setShowWizardModal] = React.useState(false);
+
+  const [showPayslipModal, setShowPayslipModal] = React.useState(false);
+  const [selectedPayslip, setSelectedPayslip] = React.useState<PayslipItem | null>(null);
+
+  const [showHistoryModal, setShowHistoryModal] = React.useState(false);
+  const [showPaymentsModal, setShowPaymentsModal] = React.useState(false);
+  const [selectedRunForPayments, setSelectedRunForPayments] = React.useState<PayrollRunItem | null>(null);
+
+  // Modal d'impression groupée
+  const [bulkPrintRun, setBulkPrintRun] = React.useState<PayrollRunItem | null>(null);
 
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
 
@@ -105,25 +90,64 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
     setTimeout(() => setToastMessage(null), 4500);
   };
 
+  // Chargement initial
+  React.useEffect(() => {
+    const loadedEmps = loadEmployees(companySlug);
+    const loadedRuns = loadPayrollRuns(companySlug);
+
+    setEmployees(loadedEmps);
+    setRuns(loadedRuns);
+    setIsLoaded(true);
+  }, [companySlug]);
+
+  // Sauvegarde à chaque modification d'employés
+  const updateEmployees = (newEmployees: EmployeeItem[]) => {
+    setEmployees(newEmployees);
+    saveEmployees(companySlug, newEmployees);
+  };
+
+  // Sauvegarde à chaque modification de paie
+  const updateRuns = (newRuns: PayrollRunItem[]) => {
+    setRuns(newRuns);
+    savePayrollRuns(companySlug, newRuns);
+  };
+
   // =========================================================================
-  // CALCULS FISCAUX & SOCIAUX AUX NORMES BÉNINOISES (CNSS 21% & BARÈME ITS CGI)
+  // CALCULS SOCIAUX & FISCAUX CERTIFIÉS AUX NORMES BÉNINOISES (CNSS 21% & CGI ITS)
   // =========================================================================
+  const activeEmployees = React.useMemo(() => {
+    return employees.filter((e) => e.status === 'ACTIF');
+  }, [employees]);
+
   const employeePayrollData = React.useMemo(() => {
-    return employees.map((emp) => {
-      const payslip = calculatePayslip({ baseSalary: emp.baseSalary });
+    return activeEmployees.map((emp) => {
+      const pendingAdvance = emp.advances?.find((a) => a.amount > a.repaidAmount);
+      const advanceDeduct = pendingAdvance
+        ? Math.min(pendingAdvance.monthlyDeduction, pendingAdvance.amount - pendingAdvance.repaidAmount)
+        : 0;
+
+      const payslip = calculatePayslip({
+        baseSalary: emp.baseSalary,
+        transportAllowance: emp.transportAllowance,
+        mealAllowance: emp.mealAllowance,
+        rendementAllowance: emp.rendementAllowance,
+        responsibilityAllowance: emp.responsibilityAllowance,
+        advanceDeduction: advanceDeduct,
+      });
+
       return {
         ...emp,
         payslip,
       };
     });
-  }, [employees]);
+  }, [activeEmployees]);
 
   // Masse salariale brute
   const totalPayroll = React.useMemo(() => {
     return employeePayrollData.reduce((sum, e) => sum + e.payslip.grossSalary, 0);
   }, [employeePayrollData]);
 
-  // Cotisations CNSS : 3.6% part salarié + 17.4% part employeur = 21.0%
+  // Cotisations CNSS : 3.6% salarié + 17.4% patronale = 21.0%
   const totalCnssEmployee = React.useMemo(() => {
     return employeePayrollData.reduce((sum, e) => sum + e.payslip.cnssEmployee, 0);
   }, [employeePayrollData]);
@@ -132,99 +156,328 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
     return employeePayrollData.reduce((sum, e) => sum + e.payslip.cnssEmployer, 0);
   }, [employeePayrollData]);
 
-  const totalCnss = totalCnssEmployee + totalCnssEmployer; // 91 350 FCFA pour 435 000 FCFA
+  const totalCnss = totalCnssEmployee + totalCnssEmployer;
 
-  // Impôt sur les Traitements et Salaires (ITS) selon barème progressif mensuel CGI Bénin
+  // Retenue fiscale ITS (CGI Bénin)
   const totalIts = React.useMemo(() => {
     return employeePayrollData.reduce((sum, e) => sum + e.payslip.itsAmount, 0);
   }, [employeePayrollData]);
 
-  // Taux effectif moyen d'ITS sur la masse salariale
   const effectiveItsRate = totalPayroll > 0 ? ((totalIts / totalPayroll) * 100).toFixed(2) : '0';
 
-  // Net total à virer aux salariés
+  // Net total à verser
   const totalNetPay = React.useMemo(() => {
     return employeePayrollData.reduce((sum, e) => sum + e.payslip.netToPay, 0);
   }, [employeePayrollData]);
 
-  // Coût total employeur (Masse salariale + CNSS patronale 17.4%)
+  // Coût total employeur
   const totalEmployerCost = totalPayroll + totalCnssEmployer;
 
-  const handleCreateEmployee = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newEmp: EmployeeRow = {
-      id: `emp_${Date.now()}`,
-      registrationNumber: matricule.toUpperCase().trim(),
-      fullName: fullName.trim(),
-      jobTitle: jobTitle.trim(),
-      baseSalary: parseInt(baseSalary, 10) || 52000,
-      cnssNumber: cnss.trim() || 'En cours',
-      phone: phone.trim(),
-      hireDate: new Date().toLocaleDateString('fr-BJ'),
-      hasPayslips: false,
+  // Tous les bulletins générés existants
+  const allPayslips = React.useMemo(() => {
+    return runs.flatMap((r) => r.payslips || []);
+  }, [runs]);
+
+  // =========================================================================
+  // ACTIONS SALARIÉS (Création, Modification, Profil, Sortie)
+  // =========================================================================
+  const suggestedMatricule = React.useMemo(() => {
+    const count = employees.length + 1;
+    return `EMP-${String(count).padStart(3, '0')}`;
+  }, [employees.length]);
+
+  const handleSaveEmployee = (data: Partial<EmployeeItem>, revisionReason?: string) => {
+    if (editingEmployee) {
+      // Modification
+      const oldBaseSalary = editingEmployee.baseSalary;
+      const newBaseSalary = data.baseSalary || oldBaseSalary;
+      const salaryChanged = oldBaseSalary !== newBaseSalary;
+
+      const historyEntry = salaryChanged
+        ? {
+            id: `hist_${Date.now()}`,
+            effectiveDate: new Date().toISOString().split('T')[0],
+            baseSalary: newBaseSalary,
+            transportAllowance: data.transportAllowance || 0,
+            otherAllowances: (data.mealAllowance || 0) + (data.rendementAllowance || 0),
+            reason: revisionReason?.trim() || 'Révision périodique',
+            recordedAt: new Date().toISOString(),
+          }
+        : null;
+
+      const updatedHistory = historyEntry
+        ? [historyEntry, ...(editingEmployee.salaryHistory || [])]
+        : editingEmployee.salaryHistory || [];
+
+      const updated = employees.map((emp) => {
+        if (emp.id === editingEmployee.id) {
+          return {
+            ...emp,
+            ...data,
+            salaryHistory: updatedHistory,
+          } as EmployeeItem;
+        }
+        return emp;
+      });
+
+      updateEmployees(updated);
+      showToast(`Salarié "${editingEmployee.fullName}" mis à jour avec succès.`);
+    } else {
+      // Création
+      const newEmp: EmployeeItem = {
+        id: `emp_${Date.now()}`,
+        registrationNumber: data.registrationNumber || suggestedMatricule,
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        fullName: data.fullName || `${data.firstName} ${data.lastName}`,
+        gender: data.gender || 'M',
+        birthDate: data.birthDate,
+        phone: data.phone || '',
+        email: data.email,
+        address: data.address,
+        jobTitle: data.jobTitle || 'Employé',
+        department: data.department || 'Commercial & Ventes',
+        establishment: data.establishment || 'Siège Principal Cotonou',
+        hireDate: data.hireDate || new Date().toISOString().split('T')[0],
+        contractType: data.contractType || 'CDI',
+        contractEndDate: data.contractEndDate,
+        baseSalary: data.baseSalary || 52000,
+        paymentFrequency: data.paymentFrequency || 'MENSUEL',
+        paymentMethod: data.paymentMethod || 'VIREMENT',
+        bankDetails: data.bankDetails,
+        transportAllowance: data.transportAllowance || 0,
+        mealAllowance: data.mealAllowance || 0,
+        rendementAllowance: data.rendementAllowance || 0,
+        responsibilityAllowance: data.responsibilityAllowance || 0,
+        cnssNumber: data.cnssNumber || 'En cours',
+        ifuNumber: data.ifuNumber,
+        status: data.status || 'ACTIF',
+        salaryHistory: [
+          {
+            id: `hist_${Date.now()}`,
+            effectiveDate: data.hireDate || new Date().toISOString().split('T')[0],
+            baseSalary: data.baseSalary || 52000,
+            transportAllowance: data.transportAllowance || 0,
+            otherAllowances: (data.mealAllowance || 0) + (data.rendementAllowance || 0),
+            reason: revisionReason?.trim() || 'Rémunération initiale à l’embauche',
+            recordedAt: new Date().toISOString(),
+          },
+        ],
+        advances: [],
+        hasPayslips: false,
+      };
+
+      updateEmployees([...employees, newEmp]);
+      showToast(`Salarié "${newEmp.fullName}" enregistré avec succès.`);
+    }
+  };
+
+  // Ajout d'une avance sur salaire
+  const handleAddAdvance = (
+    employeeId: string,
+    advanceData: Omit<EmployeeAdvance, 'id' | 'repaidAmount' | 'status' | 'repayments'>
+  ) => {
+    const newAdv: EmployeeAdvance = {
+      ...advanceData,
+      id: `adv_${Date.now()}`,
+      repaidAmount: 0,
+      status: 'EN_COURS',
+      repayments: [],
     };
-    setEmployees([...employees, newEmp]);
-    setShowAddModal(false);
-    setFullName('');
-    setJobTitle('');
-    setPhone('');
-    setBaseSalary('80000');
-    setMatricule(`EMP-00${employees.length + 2}`);
-    showToast(`Salarié "${newEmp.fullName}" enregistré avec succès.`);
-  };
-
-  const handleOpenEdit = (emp: EmployeeRow) => {
-    setEditingEmployee(emp);
-    setEditFullName(emp.fullName);
-    setEditJobTitle(emp.jobTitle);
-    setEditBaseSalary(String(emp.baseSalary));
-    setEditCnss(emp.cnssNumber === 'En cours' ? '' : emp.cnssNumber);
-    setEditPhone(emp.phone || '');
-  };
-
-  const handleUpdateEmployee = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingEmployee) return;
-
-    const isLocked = !!editingEmployee.hasPayslips;
 
     const updated = employees.map((emp) => {
-      if (emp.id === editingEmployee.id) {
+      if (emp.id === employeeId) {
         return {
           ...emp,
-          fullName: isLocked ? emp.fullName : editFullName.trim(),
-          jobTitle: editJobTitle.trim(),
-          baseSalary: parseInt(editBaseSalary, 10) || 52000,
-          cnssNumber: editCnss.trim() || 'En cours',
-          phone: editPhone.trim(),
+          advances: [newAdv, ...(emp.advances || [])],
         };
       }
       return emp;
     });
 
-    setEmployees(updated);
-    setEditingEmployee(null);
-    showToast(`Fiche salarié "${editingEmployee.fullName}" mise à jour.`);
+    updateEmployees(updated);
+    showToast(`Avance de ${formatFcfa(newAdv.amount)} enregistrée avec succès.`);
   };
 
-  const handleDelete = (emp: EmployeeRow) => {
-    if (emp.hasPayslips) {
-      alert(`⚠️ Suppression impossible : des bulletins de paie et cotisations CNSS/ITS officielles ont déjà été générés pour "${emp.fullName}".`);
-      return;
-    }
-    if (confirm(`Confirmez-vous la suppression du salarié "${emp.fullName}" (${emp.registrationNumber}) ?`)) {
-      setEmployees(employees.filter((e) => e.id !== emp.id));
-      showToast(`Salarié "${emp.fullName}" supprimé.`);
+  // Sortie ou archivage d'un salarié (Ne supprime jamais physiquement si bulletins existants)
+  const handleToggleDeactivate = (emp: EmployeeItem) => {
+    if (emp.status === 'ACTIF') {
+      const reason = prompt(`Précisez le motif de sortie pour "${emp.fullName}" (ex: Démission, Fin de contrat, Retraite) :`, 'Fin de contrat');
+      if (reason === null) return;
+
+      const updated = employees.map((e) => {
+        if (e.id === emp.id) {
+          return {
+            ...e,
+            status: 'SORTI' as const,
+            departureDate: new Date().toISOString().split('T')[0],
+            departureReason: reason.trim() || 'Cessation d’activité',
+          };
+        }
+        return e;
+      });
+      updateEmployees(updated);
+      showToast(`Salarié "${emp.fullName}" marqué comme Sorti de l'effectif.`);
+    } else {
+      if (confirm(`Voulez-vous réactiver "${emp.fullName}" dans l'effectif actif ?`)) {
+        const updated = employees.map((e) => {
+          if (e.id === emp.id) {
+            return {
+              ...e,
+              status: 'ACTIF' as const,
+              departureDate: undefined,
+              departureReason: undefined,
+            };
+          }
+          return e;
+        });
+        updateEmployees(updated);
+        showToast(`Salarié "${emp.fullName}" réactivé avec succès.`);
+      }
     }
   };
 
-  const columns: ColumnDef<EmployeeRow>[] = [
+  // Validation d'une paie mensuelle
+  const handleValidatePayroll = (newRun: PayrollRunItem) => {
+    // 1. Mettre à jour l'historique des paies (ou remplacer si recalcul)
+    const filteredRuns = runs.filter((r) => r.periodKey !== newRun.periodKey);
+    const updatedRuns = [newRun, ...filteredRuns];
+    updateRuns(updatedRuns);
+
+    // 2. Marquer hasPayslips = true pour les salariés concernés et déduire les remboursements d'avances
+    const updatedEmployees = employees.map((emp) => {
+      const slip = newRun.payslips.find((p) => p.employeeId === emp.id);
+      if (!slip) return emp;
+
+      let updatedAdvances = emp.advances || [];
+      if (slip.advanceDeduction > 0 && emp.advances && emp.advances.length > 0) {
+        let deductLeft = slip.advanceDeduction;
+        updatedAdvances = emp.advances.map((adv) => {
+          if (adv.status === 'SOLDE' || deductLeft <= 0) return adv;
+          const remaining = adv.amount - adv.repaidAmount;
+          const toDeduct = Math.min(deductLeft, remaining);
+          deductLeft -= toDeduct;
+          const newRepaid = adv.repaidAmount + toDeduct;
+          return {
+            ...adv,
+            repaidAmount: newRepaid,
+            status: (newRepaid >= adv.amount ? 'SOLDE' : 'EN_COURS') as any,
+            repayments: [
+              ...(adv.repayments || []),
+              {
+                date: new Date().toISOString().split('T')[0],
+                amount: toDeduct,
+                payrollPeriod: newRun.monthLabel,
+                reference: slip.payslipNumber,
+              },
+            ],
+          };
+        });
+      }
+
+      return {
+        ...emp,
+        hasPayslips: true,
+        advances: updatedAdvances,
+      };
+    });
+
+    updateEmployees(updatedEmployees);
+    showToast(`Paie mensuelle de ${newRun.monthLabel} validée avec succès ! ${newRun.payslips.length} bulletins générés.`);
+  };
+
+  // Mise à jour des paiements d'une paie
+  const handleUpdateRunPayments = (
+    runId: string,
+    updatedPayslips: PayslipItem[],
+    cnssUpdate?: { paidAmount: number; paymentDate: string; paymentRef: string },
+    dgiUpdate?: { paidAmount: number; paymentDate: string; paymentRef: string }
+  ) => {
+    const updatedRuns = runs.map((r) => {
+      if (r.id === runId) {
+        const totalPaidToEmps = updatedPayslips.reduce((sum, p) => sum + p.paidAmount, 0);
+        const remainingEmps = Math.max(0, r.totalNet - totalPaidToEmps);
+
+        return {
+          ...r,
+          payslips: updatedPayslips,
+          totalPaidToEmployees: totalPaidToEmps,
+          remainingEmployeesPay: remainingEmps,
+          cnssPaidAmount: cnssUpdate ? cnssUpdate.paidAmount : r.cnssPaidAmount,
+          cnssPaymentDate: cnssUpdate ? cnssUpdate.paymentDate : r.cnssPaymentDate,
+          cnssPaymentRef: cnssUpdate ? cnssUpdate.paymentRef : r.cnssPaymentRef,
+          cnssPaymentStatus: cnssUpdate
+            ? cnssUpdate.paidAmount >= r.totalCnss
+              ? ('PAYE' as const)
+              : ('PARTIEL' as const)
+            : r.cnssPaymentStatus,
+          dgiPaidAmount: dgiUpdate ? dgiUpdate.paidAmount : r.dgiPaidAmount,
+          dgiPaymentDate: dgiUpdate ? dgiUpdate.paymentDate : r.dgiPaymentDate,
+          dgiPaymentRef: dgiUpdate ? dgiUpdate.paymentRef : r.dgiPaymentRef,
+          dgiPaymentStatus: dgiUpdate
+            ? dgiUpdate.paidAmount >= r.totalIts
+              ? ('PAYE' as const)
+              : ('PARTIEL' as const)
+            : r.dgiPaymentStatus,
+        };
+      }
+      return r;
+    });
+
+    updateRuns(updatedRuns);
+    showToast('Règlements mis à jour avec succès.');
+  };
+
+  // =========================================================================
+  // FILTRAGE ET RECHERCHE DU TABLEAU
+  // =========================================================================
+  const filteredEmployees = React.useMemo(() => {
+    return employees.filter((emp) => {
+      // Filtre statut
+      if (filterStatus !== 'ALL' && emp.status !== filterStatus) {
+        return false;
+      }
+      // Filtre département
+      if (filterDepartment !== 'ALL' && emp.department !== filterDepartment) {
+        return false;
+      }
+      // Recherche textuelle
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = emp.fullName.toLowerCase().includes(q);
+        const matchMat = emp.registrationNumber.toLowerCase().includes(q);
+        const matchJob = emp.jobTitle.toLowerCase().includes(q);
+        const matchDept = emp.department.toLowerCase().includes(q);
+        const matchCnss = (emp.cnssNumber || '').toLowerCase().includes(q);
+        if (!matchName && !matchMat && !matchJob && !matchDept && !matchCnss) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [employees, filterStatus, filterDepartment, searchQuery]);
+
+  // Liste unique des départements pour le sélecteur
+  const uniqueDepartments = React.useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e.department) set.add(e.department);
+    });
+    return Array.from(set);
+  }, [employees]);
+
+  // Colonnes du tableau de salariés
+  const columns: ColumnDef<EmployeeItem>[] = [
     {
       id: 'registrationNumber',
       header: 'Matricule',
       accessorKey: 'registrationNumber',
       sortable: true,
-      cell: (row) => <span className="font-mono text-xs font-bold text-gray-900">{row.registrationNumber}</span>,
+      cell: (row) => (
+        <span className="font-mono text-xs font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded border">
+          {row.registrationNumber}
+        </span>
+      ),
     },
     {
       id: 'fullName',
@@ -246,12 +499,26 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
       ),
     },
     {
+      id: 'department',
+      header: 'Service / Dép.',
+      accessorKey: 'department',
+      sortable: true,
+      cell: (row) => <span className="text-xs text-gray-700">{row.department}</span>,
+    },
+    {
+      id: 'hireDate',
+      header: 'Date d’embauche',
+      accessorKey: 'hireDate',
+      sortable: true,
+      cell: (row) => <span className="text-xs text-gray-600">{new Date(row.hireDate).toLocaleDateString('fr-BJ')}</span>,
+    },
+    {
       id: 'baseSalary',
       header: 'Salaire de Base',
       accessorKey: 'baseSalary',
       sortable: true,
       type: 'number',
-      cell: (row) => <span className="font-semibold text-gray-900">{formatFcfa(row.baseSalary)}</span>,
+      cell: (row) => <span className="font-semibold text-gray-900 font-mono">{formatFcfa(row.baseSalary)}</span>,
     },
     {
       id: 'cnssDeduction',
@@ -270,7 +537,7 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
         return (
           <div>
             <span className="font-mono text-xs text-purple-700 font-bold">-{formatFcfa(p.itsAmount)}</span>
-            <span className="text-[10px] text-gray-400 block">({rate}%)</span>
+            <span className="text-[10px] text-gray-400 block font-mono">({rate}%)</span>
           </div>
         );
       },
@@ -290,78 +557,133 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
       cell: (row) => <span className="font-mono text-xs text-gray-500">{row.cnssNumber}</span>,
     },
     {
-      id: 'hireDate',
-      header: 'Date d’embauche',
-      accessorKey: 'hireDate',
+      id: 'status',
+      header: 'Statut',
+      accessorKey: 'status',
       sortable: true,
+      cell: (row) => (
+        <span
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+            row.status === 'ACTIF'
+              ? 'bg-emerald-100 text-emerald-800'
+              : row.status === 'SUSPENDU'
+              ? 'bg-amber-100 text-amber-800'
+              : 'bg-red-100 text-red-800'
+          }`}
+        >
+          {row.status === 'ACTIF' ? 'Actif' : row.status === 'SUSPENDU' ? 'Suspendu' : 'Sorti'}
+        </span>
+      ),
     },
     {
       id: 'actions',
       header: 'Actions',
       cell: (row) => {
-        const isDeleteBlocked = !!row.hasPayslips;
         return (
           <div className="flex items-center space-x-1">
-            {/* Bouton Voir bulletin */}
-            <div className="relative group/bulletin">
-              <button
-                type="button"
-                onClick={() => setViewingPayslipEmployee(row)}
-                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors flex items-center justify-center"
-                title="Voir le bulletin de paie détaillé"
-                aria-label="Voir bulletin"
-              >
-                <FileText className="w-4 h-4" />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/bulletin:flex flex-col items-center z-30 pointer-events-none">
-                <span className="bg-gray-900 text-white text-[11px] font-medium py-0.5 px-2 rounded shadow-md whitespace-nowrap">
-                  Bulletin de paie
-                </span>
-                <div className="w-2 h-1 bg-gray-900 clip-triangle -mt-px"></div>
-              </div>
-            </div>
+            {/* Consulter la fiche profil complète */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProfileEmployee(row);
+                setShowProfileModal(true);
+              }}
+              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Consulter la fiche profil détaillée (contrat, historique salarial, avances)"
+              aria-label="Consulter profil"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
 
-            {/* Bouton Modifier */}
-            <div className="relative group/edit">
-              <button
-                type="button"
-                onClick={() => handleOpenEdit(row)}
-                className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex items-center justify-center"
-                title="Modifier"
-                aria-label="Modifier"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/edit:flex flex-col items-center z-30 pointer-events-none">
-                <span className="bg-gray-900 text-white text-[11px] font-medium py-0.5 px-2 rounded shadow-md whitespace-nowrap">
-                  Modifier
-                </span>
-                <div className="w-2 h-1 bg-gray-900 clip-triangle -mt-px"></div>
-              </div>
-            </div>
+            {/* Modifier le salarié */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingEmployee(row);
+                setShowEmployeeModal(true);
+              }}
+              className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Modifier les informations"
+              aria-label="Modifier"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
 
-            {/* Bouton Supprimer */}
-            <div className="relative group/del">
-              <button
-                type="button"
-                onClick={() => handleDelete(row)}
-                className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${
-                  isDeleteBlocked
-                    ? 'text-gray-300 hover:text-red-500 hover:bg-red-50'
-                    : 'text-red-600 hover:text-red-800 hover:bg-red-50'
-                }`}
-                title={isDeleteBlocked ? 'Suppression bloquée (bulletins émis)' : 'Supprimer'}
-                aria-label="Supprimer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover/del:flex flex-col items-center z-30 pointer-events-none">
-                <span className="bg-gray-900 text-white text-[11px] font-medium py-0.5 px-2 rounded shadow-md whitespace-nowrap">
-                  {isDeleteBlocked ? 'Suppression bloquée' : 'Supprimer'}
-                </span>
-                <div className="w-2 h-1 bg-gray-900 clip-triangle -mt-px"></div>
-              </div>
-            </div>
+            {/* Consulter le dernier bulletin */}
+            <button
+              type="button"
+              onClick={() => {
+                const latestSlip = allPayslips.find((p) => p.employeeId === row.id);
+                if (latestSlip) {
+                  setSelectedPayslip(latestSlip);
+                  setShowPayslipModal(true);
+                } else {
+                  // Générer un aperçu de bulletin
+                  const p = calculatePayslip({ baseSalary: row.baseSalary });
+                  const draftSlip: PayslipItem = {
+                    id: `draft_${row.id}`,
+                    payslipNumber: `BUL-APERÇU-${row.registrationNumber}`,
+                    runId: 'draft',
+                    companySlug,
+                    employeeId: row.id,
+                    employeeName: row.fullName,
+                    employeeMatricule: row.registrationNumber,
+                    employeeJob: row.jobTitle,
+                    employeeDepartment: row.department,
+                    employeeCnss: row.cnssNumber,
+                    periodMonth: new Date().getMonth() + 1,
+                    periodYear: new Date().getFullYear(),
+                    baseSalary: row.baseSalary,
+                    transportAllowance: row.transportAllowance || 0,
+                    mealAllowance: row.mealAllowance || 0,
+                    rendementAllowance: row.rendementAllowance || 0,
+                    responsibilityAllowance: row.responsibilityAllowance || 0,
+                    overtimeAmount: 0,
+                    commissions: 0,
+                    exceptionalBonus: 0,
+                    totalAllowances: p.totalAllowances,
+                    grossSalary: p.grossSalary,
+                    cnssEmployee: p.cnssEmployee,
+                    cnssEmployer: p.cnssEmployer,
+                    cnssEmployerRetirement: p.cnssEmployerRetirement,
+                    cnssEmployerFamily: p.cnssEmployerFamily,
+                    cnssEmployerAccident: p.cnssEmployerAccident,
+                    taxableBase: p.taxableBase,
+                    itsAmount: p.itsAmount,
+                    advanceDeduction: 0,
+                    otherDeductions: 0,
+                    netToPay: p.netToPay,
+                    employerTotalCost: p.employerTotalCost,
+                    paymentStatus: 'NON_PAYE',
+                    paidAmount: 0,
+                    remainingAmount: p.netToPay,
+                    createdAt: new Date().toISOString(),
+                  };
+                  setSelectedPayslip(draftSlip);
+                  setShowPayslipModal(true);
+                }
+              }}
+              className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+              title="Consulter le bulletin de paie officiel"
+              aria-label="Voir bulletin"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+
+            {/* Sortie / Désactivation */}
+            <button
+              type="button"
+              onClick={() => handleToggleDeactivate(row)}
+              className={`p-1.5 rounded-lg transition-colors ${
+                row.status === 'ACTIF'
+                  ? 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                  : 'text-emerald-600 hover:bg-emerald-50'
+              }`}
+              title={row.status === 'ACTIF' ? 'Sortir le salarié de l’effectif' : 'Réactiver le salarié'}
+              aria-label="Statut effectif"
+            >
+              <Power className="w-4 h-4" />
+            </button>
           </div>
         );
       },
@@ -383,34 +705,68 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ressources Humaines & Paie (Bénin)</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Fiches salariés, calcul légal des cotisations CNSS (21%) et retenue à la source de l’ITS (barème progressif CGI Bénin).
+            Gestion des salariés, calcul des cotisations sociales (CNSS 21%) et fiscales (retenue ITS selon CGI Bénin).
           </p>
         </div>
 
-        {/* Boutons d'action correctement dimensionnés sans débordement de texte */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 shrink-0">
+        {/* Boutons d'action de l'en-tête */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+          {/* Historique des paies */}
           <Button
             variant="outline"
-            onClick={() => setShowPayrollRunModal(true)}
-            className="h-10 px-4 border-blue-600 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition-all"
-            title="Lancer le calcul et la clôture de la paie mensuelle"
+            onClick={() => setShowHistoryModal(true)}
+            className="h-10 px-3.5 border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs shrink-0"
+            title="Consulter l'historique des périodes de paie clôturées"
           >
-            <Play className="w-4 h-4 text-blue-600 shrink-0" />
-            <span className="whitespace-nowrap">Exécuter la paie mensuelle</span>
+            <Calendar className="w-4 h-4 text-gray-600 shrink-0" />
+            <span>Historique des paies</span>
           </Button>
 
+          {/* Suivi des règlements */}
           <Button
-            onClick={() => setShowAddModal(true)}
+            variant="outline"
+            onClick={() => {
+              if (runs.length > 0) {
+                setSelectedRunForPayments(runs[0]);
+                setShowPaymentsModal(true);
+              } else {
+                showToast("Aucune période de paie validée pour le moment. Exécutez d'abord la paie.");
+              }
+            }}
+            className="h-10 px-3.5 border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs shrink-0"
+            title="Suivi des règlements des salariés et des obligations DGI/CNSS"
+          >
+            <CreditCard className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>Suivi des règlements</span>
+          </Button>
+
+          {/* Exécuter la paie mensuelle */}
+          <Button
+            variant="outline"
+            onClick={() => setShowWizardModal(true)}
+            className="h-10 px-4 border-blue-600 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition-all"
+            title="Lancer l'assistant de préparation et calcul de la paie mensuelle"
+          >
+            <Play className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>Exécuter la paie mensuelle</span>
+          </Button>
+
+          {/* Nouveau salarié */}
+          <Button
+            onClick={() => {
+              setEditingEmployee(null);
+              setShowEmployeeModal(true);
+            }}
             className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition-all border border-blue-600"
           >
             <Plus className="w-4 h-4 shrink-0 text-white" />
-            <span className="whitespace-nowrap">Nouveau salarié</span>
+            <span>Nouveau salarié</span>
           </Button>
         </div>
       </div>
 
-      {/* Synthèse sociale et fiscale certifiée aux normes béninoises */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Cartes d'indicateurs financiers */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {/* 1. Masse salariale brute */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div>
@@ -422,8 +778,8 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
             </div>
           </div>
           <div className="pt-2 mt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <span>{employees.length} salariés actifs</span>
-            <span className="font-semibold text-emerald-700">Net viré : {formatFcfa(totalNetPay)}</span>
+            <span>{activeEmployees.length} salariés actifs</span>
+            <span className="font-semibold text-emerald-700 font-mono">Net : {formatFcfa(totalNetPay)}</span>
           </div>
         </div>
 
@@ -432,7 +788,7 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-blue-800 uppercase tracking-wider block">
-                Cotisations CNSS totales (21,0%)
+                Cotisations CNSS (21,0%)
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
                 Norme Bénin
@@ -454,12 +810,12 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
           </div>
         </div>
 
-        {/* 3. Retenue ITS DGI à déclarer (Barème progressif mensuel) */}
+        {/* 3. Retenue ITS DGI à déclarer */}
         <div className="bg-white p-5 rounded-2xl border border-purple-200 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-purple-800 uppercase tracking-wider block">
-                Retenue ITS DGI à déclarer
+                Retenue ITS DGI
               </span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono">
                 {effectiveItsRate}% effectif
@@ -471,54 +827,225 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
           </div>
           <div className="pt-2 mt-2 border-t border-purple-100 text-[11px] text-purple-900">
             <div className="flex justify-between items-center">
-              <span>Barème progressif CGI Bénin :</span>
+              <span>Barème progressif CGI :</span>
               <span className="font-bold text-[10px]">Tranches 0% à 30%</span>
             </div>
             <span className="text-[10px] text-gray-500 block mt-0.5">
-              Exonéré ≤ 60 000 • 10% (60k-150k) • 15% (150k-250k)
+              Exonéré ≤ 60k • 10% (60k-150k) • 15% (150k-250k)
             </span>
+          </div>
+        </div>
+
+        {/* 4. Coût total personnel (Charges patronales incluses) */}
+        <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">
+              Coût Total Entreprise
+            </span>
+            <div className="text-2xl font-black text-emerald-800 mt-1 font-mono">
+              {formatFcfa(totalEmployerCost)}
+            </div>
+          </div>
+          <div className="pt-2 mt-2 border-t border-emerald-100 text-[11px] text-emerald-900 space-y-0.5">
+            <div className="flex justify-between">
+              <span>Rémunérations nettes :</span>
+              <strong className="font-mono">{formatFcfa(totalNetPay)}</strong>
+            </div>
+            <div className="flex justify-between">
+              <span>Charges sociales & fiscales :</span>
+              <strong className="font-mono">{formatFcfa(totalCnss + totalIts)}</strong>
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Barre de recherche et filtres de gestion du personnel */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex-1 relative">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Rechercher par nom, matricule, poste, N° CNSS..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 bg-gray-50 text-xs focus:bg-white focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Filtre service */}
+          <select
+            value={filterDepartment}
+            onChange={(e) => setFilterDepartment(e.target.value)}
+            className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-xs focus:bg-white focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">Tous les services</option>
+            {uniqueDepartments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </select>
+
+          {/* Filtre statut */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as any)}
+            className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-xs focus:bg-white focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">Tous les statuts</option>
+            <option value="ACTIF">🟢 Actifs uniquement</option>
+            <option value="SUSPENDU">🟡 Suspendus</option>
+            <option value="SORTI">🔴 Sortis de l'effectif</option>
+          </select>
+
+          {(searchQuery || filterDepartment !== 'ALL' || filterStatus !== 'ALL') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setFilterDepartment('ALL');
+                setFilterStatus('ALL');
+              }}
+              className="h-10 text-xs px-2.5 text-gray-500"
+            >
+              Réinitialiser
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* Tableau des salariés */}
-      <DataTable columns={columns} data={employees} />
+      <DataTable columns={columns} data={filteredEmployees} />
 
       {/* ========================================================================= */}
-      {/* MODAL 1 : EXÉCUTION DU LIVRE DE PAIE MENSUEL (LIVRE DE SALAIRES) */}
+      {/* MODALE : CRÉATION / MODIFICATION SALARIÉ (SECTIONS A, B, C, D, E) */}
       {/* ========================================================================= */}
-      {showPayrollRunModal && (
+      <EmployeeModal
+        isOpen={showEmployeeModal}
+        onClose={() => {
+          setShowEmployeeModal(false);
+          setEditingEmployee(null);
+        }}
+        onSave={handleSaveEmployee}
+        initialEmployee={editingEmployee}
+        suggestedMatricule={suggestedMatricule}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : FICHE DÉTAILLÉE DU SALARIÉ (PROFIL, AVANCES, HISTORIQUE, CONTRAT) */}
+      {/* ========================================================================= */}
+      <EmployeeProfileModal
+        isOpen={showProfileModal}
+        onClose={() => {
+          setShowProfileModal(false);
+          setSelectedProfileEmployee(null);
+        }}
+        employee={selectedProfileEmployee}
+        payslips={allPayslips}
+        onAddAdvance={handleAddAdvance}
+        onViewPayslip={(slip) => {
+          setSelectedPayslip(slip);
+          setShowPayslipModal(true);
+        }}
+        onEditEmployee={(emp) => {
+          setEditingEmployee(emp);
+          setShowEmployeeModal(true);
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : ASSISTANT DE PRÉPARATION ET CLÔTURE DE PAIE MENSUELLE (5 ÉTAPES) */}
+      {/* ========================================================================= */}
+      <PayrollRunWizardModal
+        isOpen={showWizardModal}
+        onClose={() => setShowWizardModal(false)}
+        companySlug={companySlug}
+        companyDisplayName={companyDisplayName}
+        employees={employees}
+        existingRuns={runs}
+        onValidatePayroll={handleValidatePayroll}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : BULLETIN DE PAIE INDIVIDUEL OFFICIEL (IMPRESSION A4) */}
+      {/* ========================================================================= */}
+      <PayslipModal
+        isOpen={showPayslipModal}
+        onClose={() => {
+          setShowPayslipModal(false);
+          setSelectedPayslip(null);
+        }}
+        payslip={selectedPayslip}
+        companyDisplayName={companyDisplayName}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : HISTORIQUE DES PÉRIODES DE PAIE TRAITÉES */}
+      {/* ========================================================================= */}
+      <PayrollHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        runs={runs}
+        onOpenRunDetails={(run) => {
+          // Afficher le livre de paie
+          setShowHistoryModal(false);
+          setSelectedRunForPayments(run);
+          setShowPaymentsModal(true);
+        }}
+        onOpenPaymentsForRun={(run) => {
+          setShowHistoryModal(false);
+          setSelectedRunForPayments(run);
+          setShowPaymentsModal(true);
+        }}
+        onPrintAllSlipsForRun={(run) => {
+          setShowHistoryModal(false);
+          setBulkPrintRun(run);
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : SUIVI DES RÈGLEMENTS DES SALARIÉS, DE LA CNSS ET DE LA DGI */}
+      {/* ========================================================================= */}
+      <PayrollPaymentsModal
+        isOpen={showPaymentsModal}
+        onClose={() => {
+          setShowPaymentsModal(false);
+          setSelectedRunForPayments(null);
+        }}
+        run={selectedRunForPayments || (runs.length > 0 ? runs[0] : null)}
+        onUpdateRunPayments={handleUpdateRunPayments}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE D'IMPRESSION GROUPÉE DE TOUS LES BULLETINS D'UNE PÉRIODE */}
+      {/* ========================================================================= */}
+      {bulkPrintRun && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto print:block">
           <div className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-6 my-auto border border-gray-200 max-h-[95vh] flex flex-col print:max-h-none print:h-auto print:shadow-none print:border-none print:p-0 print:w-full print:max-w-none print:block">
-            
-            {/* Barre d'action modale */}
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200 print:hidden">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-gray-900">
-                    Livre de Paie & Clôture Mensuelle • Novembre 2026
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Calcul certifié conforme Code de Sécurité Sociale CNSS (21%) et CGI Bénin (ITS) pour {companyDisplayName}
-                  </p>
-                </div>
+            <div className="flex items-center justify-between pb-3 border-b print:hidden">
+              <div>
+                <h3 className="font-bold text-base text-gray-900">
+                  Impression groupée des bulletins • {bulkPrintRun.monthLabel} ({bulkPrintRun.payslips?.length || 0} bulletins)
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Chaque bulletin sera imprimé sur sa propre page A4 prête à distribuer ou archiver.
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   onClick={() => window.print()}
-                  className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
+                  className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimer le Livre de Paie</span>
+                  <Printer className="w-4 h-4" />
+                  <span>Lancer l'impression groupée</span>
                 </Button>
                 <button
                   type="button"
-                  onClick={() => setShowPayrollRunModal(false)}
+                  onClick={() => setBulkPrintRun(null)}
                   className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
                 >
                   <X className="w-5 h-5" />
@@ -526,432 +1053,125 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
               </div>
             </div>
 
-            {/* Corps du livre de paie */}
-            <div className="overflow-y-auto flex-1 space-y-6 pr-1 print:overflow-visible print:pr-0">
-              
-              {/* En-tête officiel imprimable */}
-              <div className="flex items-start justify-between border-b pb-4">
-                <div>
-                  <span className="text-xl font-black text-blue-700 block">{companyDisplayName}</span>
-                  <p className="text-xs text-gray-600">IFU : 0202612345678 • N° Employeur CNSS : 2026-AB123</p>
-                  <p className="text-xs text-gray-600">Cotonou, Bénin • Tél : +229 97 00 00 00</p>
-                </div>
-                <div className="text-right">
-                  <span className="inline-block px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded font-bold text-xs">
-                    ÉTAT MENSUEL DES SALAIRES
-                  </span>
-                  <p className="text-xs text-gray-500 mt-1 font-mono">Période : Novembre 2026</p>
-                </div>
-              </div>
+            <div className="overflow-y-auto flex-1 space-y-8 print:overflow-visible print:space-y-0">
+              {bulkPrintRun.payslips?.map((slip, idx) => (
+                <div key={slip.id} className="p-6 border border-gray-200 rounded-2xl bg-white space-y-4 print:border-none print:rounded-none print:p-0 print:break-after-page print:mb-0">
+                  {/* En-tête */}
+                  <div className="flex items-start justify-between border-b pb-3">
+                    <div>
+                      <span className="text-lg font-black text-blue-700 block">{companyDisplayName}</span>
+                      <p className="text-[10px] text-gray-600">IFU : 0202612345678 • N° CNSS Employeur : 2026-AB123</p>
+                      <p className="text-[10px] text-gray-600">Cotonou, République du Bénin</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="inline-block px-2.5 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded font-black text-[11px] uppercase">
+                        BULLETIN DE PAIE
+                      </span>
+                      <p className="text-xs font-bold text-gray-900 mt-1 font-mono">{slip.payslipNumber}</p>
+                      <p className="text-xs text-blue-700 font-semibold">{bulkPrintRun.monthLabel}</p>
+                    </div>
+                  </div>
 
-              {/* Tableau récapitulatif par salarié */}
-              <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-xs">
-                <table className="w-full text-left text-xs divide-y divide-gray-200">
-                  <thead className="bg-gray-100 text-gray-700 uppercase font-bold text-[10px]">
-                    <tr>
-                      <th className="p-2.5">Matricule & Salarié</th>
-                      <th className="p-2.5 text-right">Salaire Brut</th>
-                      <th className="p-2.5 text-right">CNSS Salarié (3,6%)</th>
-                      <th className="p-2.5 text-right">Base ITS</th>
-                      <th className="p-2.5 text-right">Retenue ITS</th>
-                      <th className="p-2.5 text-right">Net à Payer</th>
-                      <th className="p-2.5 text-right">CNSS Patronale (17,4%)</th>
-                      <th className="p-2.5 text-right">Coût Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {employeePayrollData.map((e) => (
-                      <tr key={e.id} className="hover:bg-gray-50">
-                        <td className="p-2.5">
-                          <span className="font-bold text-gray-900 block">{e.fullName}</span>
-                          <span className="font-mono text-[10px] text-gray-500">{e.registrationNumber} • {e.jobTitle}</span>
-                        </td>
-                        <td className="p-2.5 text-right font-mono font-bold text-gray-900">
-                          {formatFcfa(e.payslip.grossSalary)}
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-blue-700 font-semibold">
-                          -{formatFcfa(e.payslip.cnssEmployee)}
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-gray-600">
-                          {formatFcfa(e.payslip.taxableBase)}
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-purple-700 font-bold">
-                          -{formatFcfa(e.payslip.itsAmount)}
-                        </td>
-                        <td className="p-2.5 text-right font-mono font-black text-emerald-700 text-sm">
-                          {formatFcfa(e.payslip.netToPay)}
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-blue-900 font-semibold">
-                          +{formatFcfa(e.payslip.cnssEmployer)}
-                        </td>
-                        <td className="p-2.5 text-right font-mono font-bold text-gray-900">
-                          {formatFcfa(e.payslip.grossSalary + e.payslip.cnssEmployer)}
-                        </td>
+                  {/* Coordonnées */}
+                  <div className="p-3 bg-gray-50 rounded-xl border text-xs grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] text-gray-400 uppercase font-bold block">Salarié :</span>
+                      <strong className="text-sm text-gray-900 block">{slip.employeeName}</strong>
+                      <span className="text-gray-600">{slip.employeeJob}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-gray-400 uppercase font-bold block">Matricule & CNSS :</span>
+                      <span className="font-mono font-bold text-blue-700 block">{slip.employeeMatricule}</span>
+                      <span className="text-gray-600">N° CNSS : {slip.employeeCnss}</span>
+                    </div>
+                  </div>
+
+                  {/* Tableau des rubriques */}
+                  <table className="w-full text-left text-xs border border-gray-200">
+                    <thead className="bg-gray-100 font-bold text-[10px] uppercase">
+                      <tr className="border-b">
+                        <th className="p-2">Rubrique</th>
+                        <th className="p-2 text-right">Base</th>
+                        <th className="p-2 text-center">Taux</th>
+                        <th className="p-2 text-right">Part Salarié</th>
+                        <th className="p-2 text-right">Part Patronale</th>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-300">
-                    <tr>
-                      <td className="p-3 uppercase text-gray-900">TOTAUX GÉNÉRAUX</td>
-                      <td className="p-3 text-right font-mono text-gray-900">{formatFcfa(totalPayroll)}</td>
-                      <td className="p-3 text-right font-mono text-blue-700">-{formatFcfa(totalCnssEmployee)}</td>
-                      <td className="p-3 text-right font-mono text-gray-600">—</td>
-                      <td className="p-3 text-right font-mono text-purple-700">-{formatFcfa(totalIts)}</td>
-                      <td className="p-3 text-right font-mono text-emerald-700 text-sm">={formatFcfa(totalNetPay)}</td>
-                      <td className="p-3 text-right font-mono text-blue-900">+{formatFcfa(totalCnssEmployer)}</td>
-                      <td className="p-3 text-right font-mono text-gray-900">{formatFcfa(totalEmployerCost)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 font-mono">
+                      <tr>
+                        <td className="p-2 font-sans font-semibold">Salaire de Base Brut</td>
+                        <td className="p-2 text-right">{formatFcfa(slip.baseSalary)}</td>
+                        <td className="p-2 text-center">—</td>
+                        <td className="p-2 text-right font-bold text-gray-900">+{formatFcfa(slip.baseSalary)}</td>
+                        <td className="p-2 text-right text-gray-400">—</td>
+                      </tr>
+                      {slip.totalAllowances > 0 && (
+                        <tr>
+                          <td className="p-2 font-sans">Primes et indemnités</td>
+                          <td className="p-2 text-right">{formatFcfa(slip.totalAllowances)}</td>
+                          <td className="p-2 text-center">—</td>
+                          <td className="p-2 text-right font-bold text-gray-900">+{formatFcfa(slip.totalAllowances)}</td>
+                          <td className="p-2 text-right text-gray-400">—</td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td className="p-2 font-sans">Cotisation CNSS Régime Général</td>
+                        <td className="p-2 text-right">{formatFcfa(slip.grossSalary)}</td>
+                        <td className="p-2 text-center">3,6% / 17,4%</td>
+                        <td className="p-2 text-right text-blue-700 font-bold">-{formatFcfa(slip.cnssEmployee)}</td>
+                        <td className="p-2 text-right text-blue-900 font-semibold">+{formatFcfa(slip.cnssEmployer)}</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-sans">Retenue ITS (DGI Bénin)</td>
+                        <td className="p-2 text-right">{formatFcfa(slip.taxableBase)}</td>
+                        <td className="p-2 text-center">Barème CGI</td>
+                        <td className="p-2 text-right text-purple-700 font-bold">-{formatFcfa(slip.itsAmount)}</td>
+                        <td className="p-2 text-right text-gray-400">—</td>
+                      </tr>
+                      {slip.advanceDeduction > 0 && (
+                        <tr>
+                          <td className="p-2 font-sans">Retenue avance sur salaire</td>
+                          <td className="p-2 text-right">—</td>
+                          <td className="p-2 text-center">—</td>
+                          <td className="p-2 text-right text-rose-700 font-bold">-{formatFcfa(slip.advanceDeduction)}</td>
+                          <td className="p-2 text-right text-gray-400">—</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
 
-              {/* Récapitulatif des cotisations et impôts à verser */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-gray-50 rounded-xl border border-gray-200 text-xs">
-                <div>
-                  <span className="text-gray-500 block text-[11px] uppercase font-bold">À verser aux Salariés :</span>
-                  <strong className="text-emerald-700 text-base font-black font-mono block mt-0.5">
-                    {formatFcfa(totalNetPay)}
-                  </strong>
-                  <span className="text-[10px] text-gray-500">Virements bancaires ou espèces</span>
+                  {/* Net */}
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-300 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">NET À PAYER</span>
+                      <span className="text-[10px] text-emerald-700">Net d'impôt et de charges sociales</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xl font-black text-emerald-800 font-mono block">
+                        {formatFcfa(slip.netToPay)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Signature */}
+                  <div className="pt-3 border-t grid grid-cols-2 gap-4 text-[9px] text-gray-500">
+                    <div>
+                      <p>Bulletin certifié conforme aux dispositions du Code du Travail du Bénin.</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold uppercase">Signature & Cachet Employeur</p>
+                      <div className="h-8 border-b border-dashed border-gray-300"></div>
+                    </div>
+                  </div>
                 </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px] uppercase font-bold">À déclarer & verser à la CNSS :</span>
-                  <strong className="text-blue-700 text-base font-black font-mono block mt-0.5">
-                    {formatFcfa(totalCnss)}
-                  </strong>
-                  <span className="text-[10px] text-gray-500">Part salarié (3,6%) + employeur (17,4%)</span>
-                </div>
-
-                <div>
-                  <span className="text-gray-500 block text-[11px] uppercase font-bold">À déclarer & verser à la DGI :</span>
-                  <strong className="text-purple-700 text-base font-black font-mono block mt-0.5">
-                    {formatFcfa(totalIts)}
-                  </strong>
-                  <span className="text-[10px] text-gray-500">Retenue à la source ITS (0% à 30%)</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t print:hidden">
-                <span className="text-xs text-gray-500">
-                  Calculs certifiés conformes au barème du CGI et du Code de Sécurité Sociale du Bénin.
-                </span>
-                <Button
-                  onClick={() => {
-                    setShowPayrollRunModal(false);
-                    showToast('Paie mensuelle de Novembre 2026 exécutée et clôturée avec succès.');
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-sm"
-                >
-                  Valider et Clôturer la Paie
-                </Button>
-              </div>
-
+              ))}
             </div>
 
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL 2 : BULLETIN DE PAIE INDIVIDUEL OFFICIEL (FORMAT BÉNINOIS) */}
-      {/* ========================================================================= */}
-      {viewingPayslipEmployee && (() => {
-        const p = calculatePayslip({ baseSalary: viewingPayslipEmployee.baseSalary });
-        return (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto print:block">
-            <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-6 my-auto border border-gray-200 max-h-[95vh] flex flex-col print:max-h-none print:h-auto print:shadow-none print:border-none print:p-0 print:w-full print:max-w-none print:block">
-              
-              {/* Barre de navigation modale */}
-              <div className="flex items-center justify-between pb-3 border-b print:hidden">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  <span className="font-bold text-sm text-gray-900">
-                    Bulletin de Paie Officiel • {viewingPayslipEmployee.fullName}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => window.print()}
-                    className="h-8 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center gap-1"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Imprimer</span>
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setViewingPayslipEmployee(null)}
-                    className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* CORPS DU BULLETIN DE PAIE FORMAT A4 */}
-              <div className="overflow-y-auto flex-1 space-y-5 text-xs text-gray-800 pr-1 print:overflow-visible print:pr-0">
-                
-                {/* En-tête employeur */}
-                <div className="flex items-start justify-between border-b pb-4">
-                  <div>
-                    <span className="text-xl font-black text-blue-700 block">{companyDisplayName}</span>
-                    <p className="text-[11px] text-gray-600">IFU : 0202612345678 • N° CNSS Employeur : 2026-AB123</p>
-                    <p className="text-[11px] text-gray-600">Cotonou, République du Bénin</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-block px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded font-black text-xs uppercase">
-                      BULLETIN DE PAIE
-                    </span>
-                    <p className="text-xs font-bold text-gray-900 mt-1">Période : Novembre 2026</p>
-                    <p className="text-[10px] text-gray-500 font-mono">Paiement : Virement bancaire</p>
-                  </div>
-                </div>
-
-                {/* Coordonnées du salarié */}
-                <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] text-gray-400 uppercase font-bold block mb-0.5">Salarié :</span>
-                    <strong className="text-sm text-gray-900 block">{viewingPayslipEmployee.fullName}</strong>
-                    <span className="text-gray-600 block">Poste : {viewingPayslipEmployee.jobTitle}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold block mb-0.5">Matricule & Identifiants :</span>
-                    <span className="font-mono font-bold text-blue-700 block">{viewingPayslipEmployee.registrationNumber}</span>
-                    <span className="text-gray-600 block">N° CNSS : {viewingPayslipEmployee.cnssNumber}</span>
-                    <span className="text-gray-500 text-[10px] block">Embauché(e) le : {viewingPayslipEmployee.hireDate}</span>
-                  </div>
-                </div>
-
-                {/* Tableau des rubriques de paie */}
-                <table className="w-full text-left text-xs border border-gray-200">
-                  <thead className="bg-gray-100 text-gray-700 uppercase font-bold text-[10px]">
-                    <tr className="border-b">
-                      <th className="p-2.5">Rubrique de paie</th>
-                      <th className="p-2.5 text-right">Base / Assiette</th>
-                      <th className="p-2.5 text-center">Taux</th>
-                      <th className="p-2.5 text-right">Part Salariale</th>
-                      <th className="p-2.5 text-right">Part Patronale</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 font-mono">
-                    <tr>
-                      <td className="p-2.5 font-sans font-semibold">Salaire de Base Brut</td>
-                      <td className="p-2.5 text-right">{formatFcfa(p.baseSalary)}</td>
-                      <td className="p-2.5 text-center">—</td>
-                      <td className="p-2.5 text-right font-bold text-gray-900">+{formatFcfa(p.baseSalary)}</td>
-                      <td className="p-2.5 text-right text-gray-400">—</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2.5 font-sans">Cotisation CNSS Régime Général</td>
-                      <td className="p-2.5 text-right">{formatFcfa(p.grossSalary)}</td>
-                      <td className="p-2.5 text-center">3,6% / 17,4%</td>
-                      <td className="p-2.5 text-right text-blue-700 font-bold">-{formatFcfa(p.cnssEmployee)}</td>
-                      <td className="p-2.5 text-right text-blue-900 font-semibold">{formatFcfa(p.cnssEmployer)}</td>
-                    </tr>
-                    <tr>
-                      <td className="p-2.5 font-sans">
-                        Retenue fiscale ITS (DGI Bénin)
-                        <span className="block font-sans text-[10px] text-gray-500 font-normal">
-                          Assiette imposable : {formatFcfa(p.taxableBase)}
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-right">{formatFcfa(p.taxableBase)}</td>
-                      <td className="p-2.5 text-center">Barème CGI</td>
-                      <td className="p-2.5 text-right text-purple-700 font-bold">-{formatFcfa(p.itsAmount)}</td>
-                      <td className="p-2.5 text-right text-gray-400">—</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {/* Cadre Net à Payer */}
-                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-300 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-emerald-800 uppercase block">NET À PAYER AU SALARIÉ</span>
-                    <span className="text-[11px] text-emerald-700">Net d'impôt et de cotisations sociales</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-2xl font-black text-emerald-700 font-mono block">
-                      {formatFcfa(p.netToPay)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Charges patronales et coût global */}
-                <div className="p-3 bg-gray-50 rounded-lg border text-[11px] flex items-center justify-between text-gray-600">
-                  <span>Charges patronales CNSS (17,4%) : <strong>{formatFcfa(p.cnssEmployer)}</strong></span>
-                  <span>Coût total entreprise : <strong>{formatFcfa(p.grossSalary + p.cnssEmployer)}</strong></span>
-                </div>
-
-                {/* Mentions de fin de bulletin */}
-                <div className="pt-4 border-t grid grid-cols-2 gap-4 text-[10px] text-gray-500">
-                  <div>
-                    <p className="font-bold">Pour faire valoir ce que de droit.</p>
-                    <p>Fiche établie conformément aux dispositions du Code du Travail du Bénin.</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold uppercase">Signature & Cachet de l'Employeur</p>
-                    <div className="h-10 mt-1 border-b border-dashed border-gray-300"></div>
-                  </div>
-                </div>
-
-              </div>
-
+            <div className="pt-3 border-t flex justify-end print:hidden">
+              <Button type="button" variant="outline" onClick={() => setBulkPrintRun(null)}>
+                Fermer
+              </Button>
             </div>
-          </div>
-        );
-      })()}
-
-      {/* ========================================================================= */}
-      {/* MODAL 3 : AJOUT DE SALARIÉ */}
-      {/* ========================================================================= */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-bold text-gray-900">Enregistrer un salarié</h3>
-            <form onSubmit={handleCreateEmployee} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Matricule interne *"
-                  value={matricule}
-                  onChange={(e) => setMatricule(e.target.value)}
-                  required
-                />
-                <Input
-                  label="N° Immatriculation CNSS"
-                  placeholder="1234567890"
-                  value={cnss}
-                  onChange={(e) => setCnss(e.target.value)}
-                />
-              </div>
-
-              <Input
-                label="Nom complet du salarié *"
-                placeholder="Prénom et NOM"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-              />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Poste / Fonction *"
-                  placeholder="Ex: Comptable, Vendeur..."
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  required
-                />
-                <Input
-                  label="Téléphone"
-                  placeholder="+229 97 00 00 00"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </div>
-
-              <Input
-                label="Salaire de base brut (FCFA) *"
-                type="number"
-                placeholder="52000"
-                value={baseSalary}
-                onChange={(e) => setBaseSalary(e.target.value)}
-                required
-              />
-
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 text-xs text-blue-800">
-                Le salaire de base doit respecter le SMIG béninois (52 000 FCFA). Les cotisations CNSS (21%) et l’ITS sont calculés automatiquement.
-              </div>
-
-              <div className="pt-2 flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => setShowAddModal(false)}>
-                  Annuler
-                </Button>
-                <Button type="submit">Créer la fiche salarié</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL 4 : MODIFICATION DE SALARIÉ */}
-      {/* ========================================================================= */}
-      {editingEmployee && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Pencil className="w-5 h-5 text-blue-600" />
-                Modifier le salarié ({editingEmployee.registrationNumber})
-              </h3>
-              {editingEmployee.hasPayslips && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                  <Lock className="w-3.5 h-3.5" />
-                  Bulletins émis
-                </span>
-              )}
-            </div>
-
-            {editingEmployee.hasPayslips && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  Ce salarié dispose de bulletins de paie et de déclarations fiscales et sociales validées. Par traçabilité légale, son <strong>nom complet</strong> et son <strong>matricule</strong> ne peuvent plus être modifiés.
-                </span>
-              </div>
-            )}
-
-            <form onSubmit={handleUpdateEmployee} className="space-y-4">
-              <div>
-                <Input
-                  label="Nom complet du salarié *"
-                  value={editFullName}
-                  onChange={(e) => setEditFullName(e.target.value)}
-                  disabled={editingEmployee.hasPayslips}
-                  required
-                />
-                {editingEmployee.hasPayslips && (
-                  <p className="text-[11px] text-gray-400 mt-1">Identité légale verrouillée</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Poste / Fonction *"
-                  value={editJobTitle}
-                  onChange={(e) => setEditJobTitle(e.target.value)}
-                  required
-                />
-                <Input
-                  label="Téléphone"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="N° Immatriculation CNSS"
-                  value={editCnss}
-                  onChange={(e) => setEditCnss(e.target.value)}
-                />
-                <Input
-                  label="Salaire de base brut (FCFA) *"
-                  type="number"
-                  value={editBaseSalary}
-                  onChange={(e) => setEditBaseSalary(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => setEditingEmployee(null)}>
-                  Annuler
-                </Button>
-                <Button type="submit">Sauvegarder les modifications</Button>
-              </div>
-            </form>
           </div>
         </div>
       )}

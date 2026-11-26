@@ -47,4 +47,43 @@ describe('Calculs de paie et fiscalité sociale aux normes béninoises (Module M
     // Vérification stricte sans décimale
     expect(Number.isInteger(payslip.netToPay)).toBe(true);
   });
+
+  it('gère les rubriques supplémentaires (primes, heures sup, avances) et le coût employeur (17.4%)', () => {
+    const payslip = calculatePayslip({
+      baseSalary: 150000,
+      transportAllowance: 15000,
+      rendementAllowance: 10000,
+      overtime: 25000,
+      advanceDeduction: 20000,
+    });
+
+    // Brut = 150000 + 15000 + 10000 + 25000 = 200 000 FCFA
+    expect(payslip.grossSalary).toBe(200000);
+    // CNSS Salarié (3.6%) = 200 000 * 0.036 = 7 200 FCFA
+    expect(payslip.cnssEmployee).toBe(7200);
+    // CNSS Employeur = 6.4% + 9% + 2% = 17.4% -> 12 800 + 18 000 + 4 000 = 34 800 FCFA
+    expect(payslip.cnssEmployerRetirement).toBe(12800);
+    expect(payslip.cnssEmployerFamily).toBe(18000);
+    expect(payslip.cnssEmployerAccident).toBe(4000);
+    expect(payslip.cnssEmployer).toBe(34800);
+    expect(payslip.employerTotalCost).toBe(234800);
+
+    // Base ITS = 200 000 - 7 200 = 192 800 FCFA
+    expect(payslip.taxableBase).toBe(192800);
+    // ITS: 90 000 * 10% = 9 000 + (192 800 - 150 000 = 42 800) * 15% = 6 420 -> 15 420 FCFA
+    expect(payslip.itsAmount).toBe(15420);
+    // Net = 200 000 - 7 200 - 15 420 - 20 000 = 157 380 FCFA
+    expect(payslip.advanceDeduction).toBe(20000);
+    expect(payslip.netToPay).toBe(157380);
+  });
+
+  it('calcule correctement la tranche supérieure à 500 000 FCFA à 30% d’ITS', () => {
+    // Pour une base taxable de 700 000 FCFA :
+    // 60k-150k : 90 000 * 10% = 9 000 FCFA
+    // 150k-250k : 100 000 * 15% = 15 000 FCFA
+    // 250k-500k : 250 000 * 19% = 47 500 FCFA
+    // > 500k : (700 000 - 500 000 = 200 000) * 30% = 60 000 FCFA
+    // Total ITS = 9 000 + 15 000 + 47 500 + 60 000 = 131 500 FCFA
+    expect(calculateBeninIts(700000)).toBe(131500);
+  });
 });

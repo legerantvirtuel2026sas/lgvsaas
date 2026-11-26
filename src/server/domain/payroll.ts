@@ -7,7 +7,13 @@ export interface PayrollCalculationInput {
   baseSalary: number;
   transportAllowance?: number;
   mealAllowance?: number;
+  rendementAllowance?: number;
+  responsibilityAllowance?: number;
+  overtime?: number;
+  commissions?: number;
+  exceptionalBonus?: number;
   otherAllowances?: number;
+  advanceDeduction?: number;
   otherDeductions?: number;
   cnssEmployeeRate?: number; // 3.6% par défaut
   deductCnssFromTaxableBase?: boolean; // Option assiette imposable
@@ -19,10 +25,15 @@ export interface PayrollCalculationResult {
   grossSalary: number;
   cnssEmployee: number;
   cnssEmployer: number;
+  cnssEmployerRetirement: number;
+  cnssEmployerFamily: number;
+  cnssEmployerAccident: number;
   taxableBase: number;
   itsAmount: number;
+  advanceDeduction: number;
   otherDeductions: number;
   netToPay: number;
+  employerTotalCost: number;
 }
 
 /**
@@ -74,9 +85,14 @@ export function calculatePayslip(input: PayrollCalculationInput): PayrollCalcula
   const baseSalary = Math.round(Math.max(0, input.baseSalary));
   const transport = Math.round(Math.max(0, input.transportAllowance || 0));
   const meal = Math.round(Math.max(0, input.mealAllowance || 0));
+  const rendement = Math.round(Math.max(0, input.rendementAllowance || 0));
+  const responsibility = Math.round(Math.max(0, input.responsibilityAllowance || 0));
+  const overtime = Math.round(Math.max(0, input.overtime || 0));
+  const commissions = Math.round(Math.max(0, input.commissions || 0));
+  const bonus = Math.round(Math.max(0, input.exceptionalBonus || 0));
   const other = Math.round(Math.max(0, input.otherAllowances || 0));
 
-  const totalAllowances = transport + meal + other;
+  const totalAllowances = transport + meal + rendement + responsibility + overtime + commissions + bonus + other;
   const grossSalary = baseSalary + totalAllowances;
 
   // Cotisation CNSS Salarié : 3.6%
@@ -84,7 +100,10 @@ export function calculatePayslip(input: PayrollCalculationInput): PayrollCalcula
   const cnssEmployee = Math.round(grossSalary * cnssRate);
 
   // Cotisation CNSS Employeur : Retraite (6.4%) + Famille (9%) + Accidents (2%) = 17.4%
-  const cnssEmployer = Math.round(grossSalary * 0.174);
+  const cnssEmployerRetirement = Math.round(grossSalary * 0.064);
+  const cnssEmployerFamily = Math.round(grossSalary * 0.090);
+  const cnssEmployerAccident = Math.round(grossSalary * 0.020);
+  const cnssEmployer = cnssEmployerRetirement + cnssEmployerFamily + cnssEmployerAccident;
 
   // Assiette imposable ITS (par défaut : brut moins CNSS salarié)
   const deductCnss = input.deductCnssFromTaxableBase !== false;
@@ -93,8 +112,11 @@ export function calculatePayslip(input: PayrollCalculationInput): PayrollCalcula
   // Impôt sur le traitement des salaires (ITS)
   const itsAmount = calculateBeninIts(taxableBase);
 
+  // Retenues supplémentaires (avances et autres)
+  const advanceDeduction = Math.round(Math.max(0, input.advanceDeduction || 0));
   const deductions = Math.round(Math.max(0, input.otherDeductions || 0));
-  const netToPay = grossSalary - cnssEmployee - itsAmount - deductions;
+  const netToPay = grossSalary - cnssEmployee - itsAmount - advanceDeduction - deductions;
+  const employerTotalCost = grossSalary + cnssEmployer;
 
   return {
     baseSalary,
@@ -102,9 +124,14 @@ export function calculatePayslip(input: PayrollCalculationInput): PayrollCalcula
     grossSalary,
     cnssEmployee,
     cnssEmployer,
+    cnssEmployerRetirement,
+    cnssEmployerFamily,
+    cnssEmployerAccident,
     taxableBase,
     itsAmount,
+    advanceDeduction,
     otherDeductions: deductions,
     netToPay,
+    employerTotalCost,
   };
 }
