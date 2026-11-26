@@ -6,11 +6,13 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { loginAction } from '@/server/actions/auth.actions';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
   const [twoFactorCode, setTwoFactorCode] = React.useState('');
   const [show2FA, setShow2FA] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -77,12 +79,23 @@ export default function LoginPage() {
 
           <Input
             label="Mot de passe"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             placeholder="••••••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={show2FA}
+            rightElement={
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-gray-400 hover:text-gray-600 focus:outline-none p-1 rounded transition-colors"
+                title={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            }
           />
 
           {show2FA && (
