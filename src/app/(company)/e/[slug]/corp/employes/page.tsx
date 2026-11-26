@@ -744,7 +744,7 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
       )}
 
       {/* En-tête de la page */}
-      <div className="border-b border-gray-200 pb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="border-b border-gray-200 pb-5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ressources Humaines & Paie (Bénin)</h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -752,82 +752,88 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
           </p>
         </div>
 
-        {/* Boutons d'action de l'en-tête */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
-          {/* Historique des paies */}
-          <Button
-            variant="outline"
-            onClick={() => setShowHistoryModal(true)}
-            className="h-10 px-3.5 border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs shrink-0"
-            title="Consulter l'historique des périodes de paie clôturées"
-          >
-            <Calendar className="w-4 h-4 text-gray-600 shrink-0" />
-            <span>Historique des paies</span>
-          </Button>
+        {/* Boutons d'action de l'en-tête organisés en 2 rangées : 3 boutons en haut, 2 boutons en bas */}
+        <div className="flex flex-col gap-2 shrink-0 xl:items-end">
+          {/* Rangée supérieure : 3 boutons de consultation / régularisation */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Historique des paies */}
+            <Button
+              variant="outline"
+              onClick={() => setShowHistoryModal(true)}
+              className="h-9 px-3 border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+              title="Consulter l'historique des périodes de paie clôturées"
+            >
+              <Calendar className="w-3.5 h-3.5 text-gray-600 shrink-0" />
+              <span>Historique des paies</span>
+            </Button>
 
-          {/* Suivi des règlements */}
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (runs.length > 0) {
-                setSelectedRunForPayments(runs[0]);
-                setShowPaymentsModal(true);
-              } else {
-                showToast("Aucune période de paie validée pour le moment. Exécutez d'abord la paie.");
-              }
-            }}
-            className="h-10 px-3.5 border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs shrink-0"
-            title="Suivi des règlements des salariés et des obligations DGI/CNSS"
-          >
-            <CreditCard className="w-4 h-4 text-emerald-700 shrink-0" />
-            <span>Suivi des règlements</span>
-          </Button>
+            {/* Suivi des règlements */}
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (runs.length > 0) {
+                  setSelectedRunForPayments(runs[0]);
+                  setShowPaymentsModal(true);
+                } else {
+                  showToast("Aucune période de paie validée pour le moment. Exécutez d'abord la paie.");
+                }
+              }}
+              className="h-9 px-3 border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 font-semibold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+              title="Suivi des règlements des salariés et des obligations DGI/CNSS"
+            >
+              <CreditCard className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span>Suivi des règlements</span>
+            </Button>
 
-          {/* Régularisation de paie */}
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (runs.length > 0) {
-                setSelectedRunForRegularization(runs[0]);
-                setShowRegularizationModal(true);
-              } else {
-                showToast("Aucune paie validée pour le moment. Une paie doit exister pour effectuer une régularisation.");
-              }
-            }}
-            className="h-10 px-3 border-amber-300 bg-amber-50/70 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs shrink-0"
-            title="Corriger une omission ou effectuer une régularisation sur un bulletin validé"
-          >
-            <Calculator className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>Régularisation</span>
-          </Button>
+            {/* Régularisation de paie */}
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (runs.length > 0) {
+                  setSelectedRunForRegularization(runs[0]);
+                  setShowRegularizationModal(true);
+                } else {
+                  showToast("Aucune paie validée pour le moment. Une paie doit exister pour effectuer une régularisation.");
+                }
+              }}
+              className="h-9 px-3 border-amber-300 bg-amber-50/70 hover:bg-amber-100 text-amber-900 font-semibold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+              title="Corriger une omission ou effectuer une régularisation sur un bulletin validé"
+            >
+              <Calculator className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>Régularisation</span>
+            </Button>
+          </div>
 
-          {/* Exécuter la paie mensuelle */}
-          <Button
-            variant="outline"
-            onClick={() => setShowWizardModal(true)}
-            className="h-10 px-4 border-blue-600 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition-all"
-            title="Lancer l'assistant de préparation et calcul de la paie mensuelle"
-          >
-            <Play className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>Exécuter la paie mensuelle</span>
-          </Button>
+          {/* Rangée inférieure : 2 boutons d'actions principales */}
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            {/* Exécuter la paie mensuelle */}
+            <Button
+              variant="outline"
+              onClick={() => setShowWizardModal(true)}
+              className="h-10 px-4 border-blue-600 bg-blue-50/70 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
+              title="Lancer l'assistant de préparation et calcul de la paie mensuelle"
+            >
+              <Play className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Exécuter la paie mensuelle</span>
+            </Button>
 
-          {/* Nouveau salarié */}
-          <Button
-            onClick={() => {
-              setEditingEmployee(null);
-              setShowEmployeeModal(true);
-            }}
-            className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition-all border border-blue-600"
-          >
-            <Plus className="w-4 h-4 shrink-0 text-white" />
-            <span>Nouveau salarié</span>
-          </Button>
+            {/* Nouveau salarié */}
+            <Button
+              onClick={() => {
+                setEditingEmployee(null);
+                setShowEmployeeModal(true);
+              }}
+              className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all border border-blue-600"
+            >
+              <Plus className="w-4 h-4 shrink-0 text-white" />
+              <span>Nouveau salarié</span>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Cartes d'indicateurs financiers */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      {/* Cartes d'indicateurs financiers (2 en haut et 2 en bas) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 1. Masse salariale brute */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
           <div>
