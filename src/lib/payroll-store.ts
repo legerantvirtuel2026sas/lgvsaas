@@ -70,6 +70,19 @@ export interface EmployeeItem extends Record<string, unknown> {
   hasPayslips: boolean;
 }
 
+export interface PaymentTransaction {
+  id: string;
+  date: string;
+  amount: number;
+  paymentMethod: string;
+  reference: string;
+  notes?: string;
+  createdAt: string;
+  status: 'VALIDATED' | 'CANCELLED';
+  cancelledAt?: string;
+  cancellationReason?: string;
+}
+
 export interface PayslipItem {
   id: string;
   payslipNumber: string; // Ex: BUL-2026-11-001
@@ -104,9 +117,11 @@ export interface PayslipItem {
   otherDeductions: number;
   netToPay: number;
   employerTotalCost: number;
-  paymentStatus: 'NON_PAYE' | 'PARTIEL' | 'PAYE';
+  paymentStatus: 'NON_PAYE' | 'PARTIEL' | 'PAYE' | 'TROP_PERCU';
   paidAmount: number;
   remainingAmount: number;
+  overpaidAmount?: number;
+  transactions?: PaymentTransaction[];
   paymentDate?: string;
   paymentMethod?: string;
   paymentReference?: string;
@@ -132,6 +147,7 @@ export interface PayrollRunItem {
   totalEmployerCost: number;
   totalPaidToEmployees: number;
   remainingEmployeesPay: number;
+  totalOverpaidEmployees?: number;
   // Obligations CNSS
   cnssDeclaredAmount: number;
   cnssPaidAmount: number;
@@ -325,6 +341,109 @@ export function saveEmployees(companySlug: string, employees: EmployeeItem[]): v
   }
 }
 
+export function recomputePayslipTotals(slip: PayslipItem): PayslipItem {
+  let transactions = slip.transactions || [];
+
+  // Migration rétrocompatible : si paidAmount > 0 sans transactions, synthétiser l'historique
+  if (transactions.length === 0 && slip.paidAmount > 0) {
+    if (slip.paidAmount > slip.netToPay) {
+      // Écart existant (par ex. Romaric ou Gérard ayant eu paiement groupé + individuel)
+      transactions = [
+        {
+          id: `tx_${slip.id}_base`,
+          date: slip.paymentDate || '2026-11-26',
+          amount: slip.netToPay,
+          paymentMethod: slip.paymentMethod || 'Virement bancaire',
+          reference: slip.paymentReference || `VIR-MASSE-${slip.periodYear}-${String(slip.periodMonth).padStart(2, '0')}`,
+          notes: 'Règlement initial validé',
+          createdAt: new Date().toISOString(),
+          status: 'VALIDATED',
+        },
+        {
+          id: `tx_${slip.id}_extra`,
+          date: slip.paymentDate || '2026-11-26',
+          amount: slip.paidAmount - slip.netToPay,
+          paymentMethod: slip.paymentMethod || 'Espèces (Caisse)',
+          reference: slip.paymentReference ? `${slip.paymentReference}-DUP` : 'VIR-DOUBLON-1',
+          notes: 'Versement excédentaire (doublon à vérifier/régulariser)',
+          createdAt: new Date().toISOString(),
+          status: 'VALIDATED',
+        },
+      ];
+    } else {
+      transactions = [
+        {
+          id: `tx_${slip.id}_base`,
+          date: slip.paymentDate || '2026-11-26',
+          amount: slip.paidAmount,
+          paymentMethod: slip.paymentMethod || 'Virement bancaire',
+          reference: slip.paymentReference || `VIR-${slip.employeeMatricule}`,
+          notes: 'Règlement validé',
+          createdAt: new Date().toISOString(),
+          status: 'VALIDATED',
+        },
+      ];
+    }
+  }
+
+  const activeTransactions = transactions.filter((t) => t.status === 'VALIDATED');
+  const paidAmount = activeTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+  // Règle d'or :
+  // Solde restant dû = MAX(0, Net à payer - Total payé)
+  // Trop-perçu = MAX(0, Total payé - Net à payer)
+  const remainingAmount = Math.max(0, slip.netToPay - paidAmount);
+  const overpaidAmount = Math.max(0, paidAmount - slip.netToPay);
+
+  let paymentStatus: 'NON_PAYE' | 'PARTIEL' | 'PAYE' | 'TROP_PERCU' = 'NON_PAYE';
+  if (paidAmount === 0) {
+    paymentStatus = 'NON_PAYE';
+  } else if (paidAmount < slip.netToPay) {
+    paymentStatus = 'PARTIEL';
+  } else if (paidAmount === slip.netToPay) {
+    paymentStatus = 'PAYE';
+  } else {
+    paymentStatus = 'TROP_PERCU';
+  }
+
+  const latestTx = activeTransactions[activeTransactions.length - 1];
+
+  return {
+    ...slip,
+    transactions,
+    paidAmount,
+    remainingAmount,
+    overpaidAmount,
+    paymentStatus,
+    paymentDate: latestTx?.date || slip.paymentDate,
+    paymentMethod: latestTx?.paymentMethod || slip.paymentMethod,
+    paymentReference: latestTx?.reference || slip.paymentReference,
+  };
+}
+
+export function recomputeRunTotals(run: PayrollRunItem): PayrollRunItem {
+  const updatedPayslips = (run.payslips || []).map(recomputePayslipTotals);
+
+  const totalNet = updatedPayslips.reduce((sum, p) => sum + p.netToPay, 0);
+  const totalPaidToEmployees = updatedPayslips.reduce((sum, p) => sum + p.paidAmount, 0);
+
+  // Règle d'or : le solde restant global est la somme des soldes positifs uniquement
+  // (un trop-perçu chez l'un ne doit JAMAIS masquer l'impayé d'un autre)
+  const remainingEmployeesPay = updatedPayslips.reduce((sum, p) => sum + p.remainingAmount, 0);
+
+  // Somme des trop-perçus individuels à régulariser
+  const totalOverpaidEmployees = updatedPayslips.reduce((sum, p) => sum + (p.overpaidAmount || 0), 0);
+
+  return {
+    ...run,
+    payslips: updatedPayslips,
+    totalNet,
+    totalPaidToEmployees,
+    remainingEmployeesPay,
+    totalOverpaidEmployees,
+  };
+}
+
 export function loadPayrollRuns(companySlug: string): PayrollRunItem[] {
   if (typeof window === 'undefined') {
     return [];
@@ -334,7 +453,7 @@ export function loadPayrollRuns(companySlug: string): PayrollRunItem[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.map(recomputeRunTotals);
       }
     }
   } catch (err) {

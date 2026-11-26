@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { calculateBeninIts, calculatePayslip } from '../../src/server/domain/payroll';
+import {
+  recomputePayslipTotals,
+  recomputeRunTotals,
+  PayslipItem,
+  PayrollRunItem,
+  PaymentTransaction,
+} from '../../src/lib/payroll-store';
 
 describe('Calculs de paie et fiscalité sociale aux normes béninoises (Module M10)', () => {
   it('applique le barème progressif mensuel de l’ITS du CGI Bénin', () => {
@@ -85,5 +92,205 @@ describe('Calculs de paie et fiscalité sociale aux normes béninoises (Module M
     // > 500k : (700 000 - 500 000 = 200 000) * 30% = 60 000 FCFA
     // Total ITS = 9 000 + 15 000 + 47 500 + 60 000 = 131 500 FCFA
     expect(calculateBeninIts(700000)).toBe(131500);
+  });
+
+  describe('Règles de gestion des règlements, soldes et trop-perçus (Section Règlements)', () => {
+    const baseMockSlip: PayslipItem = {
+      id: 'slip_1',
+      payslipNumber: 'BUL-2026-11-001',
+      runId: 'run_2026-11',
+      companySlug: 'abp-technologie',
+      employeeId: 'emp_1',
+      employeeName: 'Romaric KOUASSI',
+      employeeMatricule: 'EMP-001',
+      employeeJob: 'Commercial',
+      employeeDepartment: 'Ventes',
+      employeeCnss: '1234567890',
+      periodMonth: 11,
+      periodYear: 2026,
+      baseSalary: 250000,
+      transportAllowance: 0,
+      mealAllowance: 0,
+      rendementAllowance: 0,
+      responsibilityAllowance: 0,
+      overtimeAmount: 0,
+      commissions: 0,
+      exceptionalBonus: 0,
+      totalAllowances: 0,
+      grossSalary: 250000,
+      cnssEmployee: 9000,
+      cnssEmployer: 43500,
+      cnssEmployerRetirement: 16000,
+      cnssEmployerFamily: 22500,
+      cnssEmployerAccident: 5000,
+      taxableBase: 241000,
+      itsAmount: 22650,
+      advanceDeduction: 0,
+      otherDeductions: 0,
+      netToPay: 218350,
+      employerTotalCost: 293500,
+      paymentStatus: 'NON_PAYE',
+      paidAmount: 0,
+      remainingAmount: 218350,
+      overpaidAmount: 0,
+      transactions: [],
+      createdAt: '2026-11-26T00:00:00.000Z',
+    };
+
+    it('gère correctement les statuts Non payé, Partiel, Réglé, et Trop-perçu avec transactions', () => {
+      // 1. Initial : Non payé
+      const s1 = recomputePayslipTotals(baseMockSlip);
+      expect(s1.paidAmount).toBe(0);
+      expect(s1.remainingAmount).toBe(218350);
+      expect(s1.overpaidAmount).toBe(0);
+      expect(s1.paymentStatus).toBe('NON_PAYE');
+
+      // 2. Acompte partiel de 100 000 FCFA
+      const tx1: PaymentTransaction = {
+        id: 'tx_1',
+        date: '2026-11-26',
+        amount: 100000,
+        paymentMethod: 'Virement bancaire',
+        reference: 'VIR-001',
+        createdAt: '2026-11-26T10:00:00.000Z',
+        status: 'VALIDATED',
+      };
+      const s2 = recomputePayslipTotals({ ...baseMockSlip, transactions: [tx1] });
+      expect(s2.paidAmount).toBe(100000);
+      expect(s2.remainingAmount).toBe(118350);
+      expect(s2.overpaidAmount).toBe(0);
+      expect(s2.paymentStatus).toBe('PARTIEL');
+
+      // 3. Règlement du solde de 118 350 FCFA
+      const tx2: PaymentTransaction = {
+        id: 'tx_2',
+        date: '2026-11-26',
+        amount: 118350,
+        paymentMethod: 'Virement bancaire',
+        reference: 'VIR-002',
+        createdAt: '2026-11-26T11:00:00.000Z',
+        status: 'VALIDATED',
+      };
+      const s3 = recomputePayslipTotals({ ...baseMockSlip, transactions: [tx1, tx2] });
+      expect(s3.paidAmount).toBe(218350);
+      expect(s3.remainingAmount).toBe(0);
+      expect(s3.overpaidAmount).toBe(0);
+      expect(s3.paymentStatus).toBe('PAYE');
+
+      // 4. Versement en doublon / excédent de 110 000 FCFA -> Total 328 350 FCFA
+      const tx3: PaymentTransaction = {
+        id: 'tx_3',
+        date: '2026-11-26',
+        amount: 110000,
+        paymentMethod: 'Espèces (Caisse)',
+        reference: 'VIR-EMP-001-2026-11',
+        createdAt: '2026-11-26T12:00:00.000Z',
+        status: 'VALIDATED',
+      };
+      const s4 = recomputePayslipTotals({ ...baseMockSlip, transactions: [tx1, tx2, tx3] });
+      expect(s4.paidAmount).toBe(328350);
+      expect(s4.remainingAmount).toBe(0);
+      expect(s4.overpaidAmount).toBe(110000);
+      expect(s4.paymentStatus).toBe('TROP_PERCU');
+
+      // 5. Annulation de la transaction excédentaire tx3 avec justification
+      const tx3Cancelled: PaymentTransaction = {
+        ...tx3,
+        status: 'CANCELLED',
+        cancelledAt: '2026-11-26T13:00:00.000Z',
+        cancellationReason: 'Annulation du doublon',
+      };
+      const s5 = recomputePayslipTotals({ ...baseMockSlip, transactions: [tx1, tx2, tx3Cancelled] });
+      expect(s5.paidAmount).toBe(218350);
+      expect(s5.remainingAmount).toBe(0);
+      expect(s5.overpaidAmount).toBe(0);
+      expect(s5.paymentStatus).toBe('PAYE');
+    });
+
+    it('calcule rigoureusement les 4 indicateurs de run sans compenser indûment les trop-perçus avec les impayés', () => {
+      // Configuration fidèle à l'anomalie constatée par l'utilisateur :
+      // Romaric : 218 350 net, 328 350 versé (trop-perçu 110 000)
+      // Béatrice : 110 112 net, 110 112 versé (solde 0, trop-perçu 0)
+      // Gérard : 62 394 net, 124 788 versé (trop-perçu 62 394)
+      const slipRomaric = recomputePayslipTotals({
+        ...baseMockSlip,
+        id: 'slip_romaric',
+        netToPay: 218350,
+        paidAmount: 328350,
+      });
+
+      const slipBeatrice = recomputePayslipTotals({
+        ...baseMockSlip,
+        id: 'slip_beatrice',
+        netToPay: 110112,
+        paidAmount: 110112,
+      });
+
+      const slipGerard = recomputePayslipTotals({
+        ...baseMockSlip,
+        id: 'slip_gerard',
+        netToPay: 62394,
+        paidAmount: 124788,
+      });
+
+      const mockRun: PayrollRunItem = {
+        id: 'run_nov_2026',
+        periodKey: '2026-11',
+        month: 11,
+        year: 2026,
+        monthLabel: 'Novembre 2026',
+        establishment: 'Tous les établissements',
+        status: 'VALIDATED',
+        employeeCount: 3,
+        totalGross: 435000,
+        totalCnssEmployee: 15660,
+        totalCnssEmployer: 75690,
+        totalCnss: 91350,
+        totalIts: 28484,
+        totalNet: 390856,
+        totalAdvancesDeducted: 0,
+        totalEmployerCost: 510690,
+        totalPaidToEmployees: 563250,
+        remainingEmployeesPay: 0,
+        cnssDeclaredAmount: 91350,
+        cnssPaidAmount: 0,
+        cnssPaymentStatus: 'EN_ATTENTE',
+        dgiDeclaredAmount: 28484,
+        dgiPaidAmount: 0,
+        dgiPaymentStatus: 'EN_ATTENTE',
+        payslips: [slipRomaric, slipBeatrice, slipGerard],
+      };
+
+      const recomputed = recomputeRunTotals(mockRun);
+
+      // 1. Total net à payer : 390 856 FCFA
+      expect(recomputed.totalNet).toBe(390856);
+
+      // 2. Total effectivement payé : 563 250 FCFA
+      expect(recomputed.totalPaidToEmployees).toBe(563250);
+
+      // 3. Total restant à payer : 0 FCFA (et NON -172 394 FCFA !)
+      expect(recomputed.remainingEmployeesPay).toBe(0);
+
+      // 4. Total des trop-perçus : 110 000 + 62 394 = 172 394 FCFA
+      expect(recomputed.totalOverpaidEmployees).toBe(172394);
+
+      // Vérification supplémentaire : si un 4e salarié a un salaire impayé de 50 000 FCFA
+      const slipImpaye = recomputePayslipTotals({
+        ...baseMockSlip,
+        id: 'slip_impaye',
+        netToPay: 50000,
+        paidAmount: 0,
+      });
+
+      const runAvecImpaye = recomputeRunTotals({
+        ...mockRun,
+        payslips: [slipRomaric, slipBeatrice, slipGerard, slipImpaye],
+      });
+
+      // Le reste à payer doit être de 50 000 FCFA et NE DOIT PAS être masqué par le trop-perçu de 172 394 FCFA !
+      expect(runAvecImpaye.remainingEmployeesPay).toBe(50000);
+      expect(runAvecImpaye.totalOverpaidEmployees).toBe(172394);
+    });
   });
 });

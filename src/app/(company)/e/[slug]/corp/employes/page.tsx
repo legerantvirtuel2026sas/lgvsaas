@@ -41,6 +41,8 @@ import {
   loadPayrollRuns,
   savePayrollRuns,
   EmployeeAdvance,
+  recomputeRunTotals,
+  recomputePayslipTotals,
 } from '@/lib/payroll-store';
 
 import { EmployeeModal } from './components/EmployeeModal';
@@ -395,14 +397,9 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
   ) => {
     const updatedRuns = runs.map((r) => {
       if (r.id === runId) {
-        const totalPaidToEmps = updatedPayslips.reduce((sum, p) => sum + p.paidAmount, 0);
-        const remainingEmps = Math.max(0, r.totalNet - totalPaidToEmps);
-
-        return {
+        return recomputeRunTotals({
           ...r,
           payslips: updatedPayslips,
-          totalPaidToEmployees: totalPaidToEmps,
-          remainingEmployeesPay: remainingEmps,
           cnssPaidAmount: cnssUpdate ? cnssUpdate.paidAmount : r.cnssPaidAmount,
           cnssPaymentDate: cnssUpdate ? cnssUpdate.paymentDate : r.cnssPaymentDate,
           cnssPaymentRef: cnssUpdate ? cnssUpdate.paymentRef : r.cnssPaymentRef,
@@ -419,7 +416,7 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
               ? ('PAYE' as const)
               : ('PARTIEL' as const)
             : r.dgiPaymentStatus,
-        };
+        });
       }
       return r;
     });
