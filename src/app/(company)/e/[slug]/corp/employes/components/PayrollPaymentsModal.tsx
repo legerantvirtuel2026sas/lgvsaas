@@ -488,8 +488,30 @@ export function PayrollPaymentsModal({
                           }`}
                         >
                           <td className="p-2.5 font-sans">
-                            <strong className="text-gray-900 block">{slip.employeeName}</strong>
-                            <span className="text-[10px] text-gray-400 font-mono">{slip.employeeMatricule}</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <strong className="text-gray-900 block">{slip.employeeName}</strong>
+                              {slip.slipType === 'REGULARIZATION' ? (
+                                <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                  Régularisation
+                                </span>
+                              ) : slip.slipType === 'COMPLEMENTARY' ? (
+                                <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                  Complémentaire
+                                </span>
+                              ) : (
+                                <span className="inline-block text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                  Paie principale
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-gray-500 font-mono block mt-0.5">
+                              {slip.employeeMatricule} • {slip.payslipNumber}
+                            </span>
+                            {slip.regularizationReason && (
+                              <span className="text-[10px] text-amber-800 italic block mt-0.5 line-clamp-1">
+                                « {slip.regularizationReason} »
+                              </span>
+                            )}
                           </td>
                           <td className="p-2.5 text-right font-black text-gray-900">{formatFcfa(slip.netToPay)}</td>
                           <td className="p-2.5 text-right font-bold text-emerald-700">{formatFcfa(slip.paidAmount)}</td>

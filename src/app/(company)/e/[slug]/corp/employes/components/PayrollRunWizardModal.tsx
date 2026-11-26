@@ -32,6 +32,11 @@ interface PayrollRunWizardModalProps {
   employees: EmployeeItem[];
   existingRuns: PayrollRunItem[];
   onValidatePayroll: (newRun: PayrollRunItem) => void;
+  onOpenRunDetails?: (run: PayrollRunItem) => void;
+  onOpenPaymentsForRun?: (run: PayrollRunItem) => void;
+  onPrintAllSlipsForRun?: (run: PayrollRunItem) => void;
+  onOpenRegularization?: (run: PayrollRunItem) => void;
+  onOpenComplementary?: (run: PayrollRunItem) => void;
 }
 
 interface VariableEntry {
@@ -61,6 +66,11 @@ export function PayrollRunWizardModal({
   employees,
   existingRuns,
   onValidatePayroll,
+  onOpenRunDetails,
+  onOpenPaymentsForRun,
+  onPrintAllSlipsForRun,
+  onOpenRegularization,
+  onOpenComplementary,
 }: PayrollRunWizardModalProps) {
   const [step, setStep] = React.useState<1 | 2 | 3 | 4 | 5>(1);
 
@@ -371,15 +381,116 @@ export function PayrollRunWizardModal({
                   </div>
                 </div>
 
-                {/* Alerte si doublon */}
+                {/* Alerte et blocage de réexécution d'une période validée */}
                 {existingRunForPeriod && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 flex items-start gap-2.5">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-bold">Attention : Une paie existe déjà pour {MONTH_NAMES[selectedMonth - 1]} {selectedYear}</p>
-                      <p className="text-[11px] mt-0.5">
-                        Cette période a déjà été validée le {existingRunForPeriod.validatedAt ? new Date(existingRunForPeriod.validatedAt).toLocaleDateString('fr-BJ') : 'antérieurement'}. Si vous continuez, le système effectuera un recalcul et une mise à jour des bulletins du mois.
-                      </p>
+                  <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 space-y-3.5 shadow-xs">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-100 rounded-xl text-amber-700 shrink-0 mt-0.5">
+                        <AlertTriangle className="w-5 h-5 text-amber-600" />
+                      </div>
+                      <div className="space-y-1.5 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-sm text-amber-900">
+                            Période déjà clôturée & validée : {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+                          </h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
+                            {existingRunForPeriod.status === 'PAID' ? 'Soldée' : 'Validée'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                          « Cette période a déjà fait l'objet d'une paie validée. Les bulletins et les résultats de cette période sont protégés contre toute nouvelle exécution normale. Vous pouvez consulter la paie existante ou effectuer une régularisation si nécessaire. »
+                        </p>
+                        <div className="pt-1 text-[11px] text-amber-700 flex items-center gap-3 flex-wrap">
+                          <span>
+                            Validation le :{' '}
+                            <strong>
+                              {existingRunForPeriod.validatedAt
+                                ? new Date(existingRunForPeriod.validatedAt).toLocaleDateString('fr-BJ')
+                                : '26/11/2026'}
+                            </strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Salariés traités :{' '}
+                            <strong>{existingRunForPeriod.employeeCount || existingRunForPeriod.payslips?.length || 0}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Total Net : <strong>{formatFcfa(existingRunForPeriod.totalNet)}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions directes proposées en remplacement de la réexécution normale */}
+                    <div className="pt-2.5 border-t border-amber-200/80 flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          onClose();
+                          if (onOpenRunDetails) onOpenRunDetails(existingRunForPeriod);
+                        }}
+                        className="h-8 px-2.5 text-xs bg-white hover:bg-amber-100 text-amber-900 border-amber-300 font-semibold flex items-center gap-1.5"
+                      >
+                        <FileCheck2 className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Livre de paie</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          onClose();
+                          if (onPrintAllSlipsForRun) onPrintAllSlipsForRun(existingRunForPeriod);
+                        }}
+                        className="h-8 px-2.5 text-xs bg-white hover:bg-amber-100 text-amber-900 border-amber-300 font-semibold flex items-center gap-1.5"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Bulletins</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          onClose();
+                          if (onOpenPaymentsForRun) onOpenPaymentsForRun(existingRunForPeriod);
+                        }}
+                        className="h-8 px-2.5 text-xs bg-white hover:bg-amber-100 text-amber-900 border-amber-300 font-semibold flex items-center gap-1.5"
+                      >
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Règlements</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          onClose();
+                          if (onOpenRegularization) onOpenRegularization(existingRunForPeriod);
+                        }}
+                        className="h-8 px-2.5 text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                        <span>Effectuer une régularisation</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          onClose();
+                          if (onOpenComplementary) onOpenComplementary(existingRunForPeriod);
+                        }}
+                        className="h-8 px-2.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Paie complémentaire (salarié omis)</span>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -715,11 +826,26 @@ export function PayrollRunWizardModal({
           </Button>
 
           <div className="flex items-center gap-2">
+            {step === 1 && existingRunForPeriod && (
+              <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                ⛔ Période protégée : réexécution normale verrouillée
+              </span>
+            )}
             {step < 5 ? (
               <Button
                 type="button"
+                disabled={step === 1 && !!existingRunForPeriod}
                 onClick={() => setStep((s) => (s < 5 ? ((s + 1) as any) : s))}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1.5"
+                className={`font-bold flex items-center gap-1.5 ${
+                  step === 1 && !!existingRunForPeriod
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed hover:bg-gray-200'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                title={
+                  step === 1 && !!existingRunForPeriod
+                    ? 'Cette période est déjà validée. Utilisez les options de régularisation ou de paie complémentaire ci-dessus.'
+                    : undefined
+                }
               >
                 <span>Suivant</span>
                 <ArrowRight className="w-4 h-4" />

@@ -51,6 +51,8 @@ import { PayrollRunWizardModal } from './components/PayrollRunWizardModal';
 import { PayslipModal } from './components/PayslipModal';
 import { PayrollHistoryModal } from './components/PayrollHistoryModal';
 import { PayrollPaymentsModal } from './components/PayrollPaymentsModal';
+import { PayrollRegularizationModal } from './components/PayrollRegularizationModal';
+import { PayrollComplementaryModal } from './components/PayrollComplementaryModal';
 
 export default function EmployeesPage({ params }: { params: { slug: string } }) {
   const companySlug = params.slug;
@@ -81,6 +83,13 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
   const [showHistoryModal, setShowHistoryModal] = React.useState(false);
   const [showPaymentsModal, setShowPaymentsModal] = React.useState(false);
   const [selectedRunForPayments, setSelectedRunForPayments] = React.useState<PayrollRunItem | null>(null);
+
+  // Modales de régularisation et paie complémentaire
+  const [showRegularizationModal, setShowRegularizationModal] = React.useState(false);
+  const [selectedRunForRegularization, setSelectedRunForRegularization] = React.useState<PayrollRunItem | null>(null);
+
+  const [showComplementaryModal, setShowComplementaryModal] = React.useState(false);
+  const [selectedRunForComplementary, setSelectedRunForComplementary] = React.useState<PayrollRunItem | null>(null);
 
   // Modal d'impression groupée
   const [bulkPrintRun, setBulkPrintRun] = React.useState<PayrollRunItem | null>(null);
@@ -425,6 +434,43 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
     showToast('Règlements mis à jour avec succès.');
   };
 
+  // Enregistrement d'une régularisation de paie
+  const handleSaveRegularization = (targetRun: PayrollRunItem, regularizationSlip: PayslipItem) => {
+    const updatedPayslips = [...(targetRun.payslips || []), regularizationSlip];
+    const updatedRun = recomputeRunTotals({
+      ...targetRun,
+      payslips: updatedPayslips,
+    });
+
+    const updatedRuns = runs.map((r) => (r.id === updatedRun.id ? updatedRun : r));
+    updateRuns(updatedRuns);
+    showToast(`Régularisation ${regularizationSlip.payslipNumber} validée pour ${regularizationSlip.employeeName}.`);
+  };
+
+  // Enregistrement d'une paie complémentaire (salarié omis)
+  const handleSaveComplementaryPayslip = (targetRun: PayrollRunItem, complementarySlip: PayslipItem) => {
+    const updatedPayslips = [...(targetRun.payslips || []), complementarySlip];
+    const updatedRun = recomputeRunTotals({
+      ...targetRun,
+      payslips: updatedPayslips,
+    });
+
+    const updatedRuns = runs.map((r) => (r.id === updatedRun.id ? updatedRun : r));
+    updateRuns(updatedRuns);
+
+    // Mettre à jour hasPayslips sur la fiche salarié
+    const updatedEmployees = employees.map((emp) => {
+      if (emp.id !== complementarySlip.employeeId) return emp;
+      return {
+        ...emp,
+        hasPayslips: true,
+      };
+    });
+    updateEmployees(updatedEmployees);
+
+    showToast(`Paie complémentaire ${complementarySlip.payslipNumber} validée pour ${complementarySlip.employeeName}.`);
+  };
+
   // =========================================================================
   // FILTRAGE ET RECHERCHE DU TABLEAU
   // =========================================================================
@@ -737,6 +783,24 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
             <span>Suivi des règlements</span>
           </Button>
 
+          {/* Régularisation de paie */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (runs.length > 0) {
+                setSelectedRunForRegularization(runs[0]);
+                setShowRegularizationModal(true);
+              } else {
+                showToast("Aucune paie validée pour le moment. Une paie doit exister pour effectuer une régularisation.");
+              }
+            }}
+            className="h-10 px-3 border-amber-300 bg-amber-50/70 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs shrink-0"
+            title="Corriger une omission ou effectuer une régularisation sur un bulletin validé"
+          >
+            <Calculator className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>Régularisation</span>
+          </Button>
+
           {/* Exécuter la paie mensuelle */}
           <Button
             variant="outline"
@@ -963,6 +1027,25 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
         employees={employees}
         existingRuns={runs}
         onValidatePayroll={handleValidatePayroll}
+        onOpenRunDetails={(run) => {
+          setSelectedRunForPayments(run);
+          setShowPaymentsModal(true);
+        }}
+        onOpenPaymentsForRun={(run) => {
+          setSelectedRunForPayments(run);
+          setShowPaymentsModal(true);
+        }}
+        onPrintAllSlipsForRun={(run) => {
+          setBulkPrintRun(run);
+        }}
+        onOpenRegularization={(run) => {
+          setSelectedRunForRegularization(run);
+          setShowRegularizationModal(true);
+        }}
+        onOpenComplementary={(run) => {
+          setSelectedRunForComplementary(run);
+          setShowComplementaryModal(true);
+        }}
       />
 
       {/* ========================================================================= */}
@@ -1000,6 +1083,50 @@ export default function EmployeesPage({ params }: { params: { slug: string } }) 
           setShowHistoryModal(false);
           setBulkPrintRun(run);
         }}
+        onOpenRegularization={(run) => {
+          setShowHistoryModal(false);
+          setSelectedRunForRegularization(run);
+          setShowRegularizationModal(true);
+        }}
+        onOpenComplementary={(run) => {
+          setShowHistoryModal(false);
+          setSelectedRunForComplementary(run);
+          setShowComplementaryModal(true);
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : RÉGULARISATION DE PAIE (AJUSTEMENTS ET CORRECTIONS CIBLÉES) */}
+      {/* ========================================================================= */}
+      <PayrollRegularizationModal
+        isOpen={showRegularizationModal}
+        onClose={() => {
+          setShowRegularizationModal(false);
+          setSelectedRunForRegularization(null);
+        }}
+        companySlug={companySlug}
+        companyDisplayName={companyDisplayName}
+        runs={runs}
+        employees={employees}
+        initialRun={selectedRunForRegularization}
+        onSaveRegularization={handleSaveRegularization}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODALE : PAIE COMPLÉMENTAIRE (SALARIÉS OMIS LORS DE LA CLÔTURE) */}
+      {/* ========================================================================= */}
+      <PayrollComplementaryModal
+        isOpen={showComplementaryModal}
+        onClose={() => {
+          setShowComplementaryModal(false);
+          setSelectedRunForComplementary(null);
+        }}
+        companySlug={companySlug}
+        companyDisplayName={companyDisplayName}
+        runs={runs}
+        employees={employees}
+        initialRun={selectedRunForComplementary}
+        onSaveComplementaryPayslip={handleSaveComplementaryPayslip}
       />
 
       {/* ========================================================================= */}

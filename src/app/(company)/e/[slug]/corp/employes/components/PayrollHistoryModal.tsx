@@ -13,6 +13,8 @@ interface PayrollHistoryModalProps {
   onOpenRunDetails: (run: PayrollRunItem) => void;
   onOpenPaymentsForRun: (run: PayrollRunItem) => void;
   onPrintAllSlipsForRun: (run: PayrollRunItem) => void;
+  onOpenRegularization?: (run: PayrollRunItem) => void;
+  onOpenComplementary?: (run: PayrollRunItem) => void;
 }
 
 export function PayrollHistoryModal({
@@ -22,6 +24,8 @@ export function PayrollHistoryModal({
   onOpenRunDetails,
   onOpenPaymentsForRun,
   onPrintAllSlipsForRun,
+  onOpenRegularization,
+  onOpenComplementary,
 }: PayrollHistoryModalProps) {
   if (!isOpen) return null;
 
@@ -80,6 +84,11 @@ export function PayrollHistoryModal({
                 <tbody className="divide-y divide-gray-100 bg-white font-mono">
                   {runs.map((r) => {
                     const isAllPaid = r.totalPaidToEmployees >= r.totalNet && r.totalNet > 0;
+                    const slips = r.payslips || [];
+                    const mainCount = slips.filter((s) => !s.slipType || s.slipType === 'MAIN').length;
+                    const regCount = slips.filter((s) => s.slipType === 'REGULARIZATION').length;
+                    const compCount = slips.filter((s) => s.slipType === 'COMPLEMENTARY').length;
+
                     return (
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="p-3 font-sans">
@@ -87,6 +96,23 @@ export function PayrollHistoryModal({
                           <span className="text-[10px] text-gray-400 font-mono">
                             Validée le {r.validatedAt ? new Date(r.validatedAt).toLocaleDateString('fr-BJ') : '—'}
                           </span>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                            {mainCount > 0 && (
+                              <span className="inline-block text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                {mainCount} standard
+                              </span>
+                            )}
+                            {regCount > 0 && (
+                              <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                +{regCount} régularisation{regCount > 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {compCount > 0 && (
+                              <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                +{compCount} complémentaire{compCount > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3 text-center font-sans">
                           <span className="inline-flex items-center gap-1 font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded-md text-[11px]">
@@ -113,34 +139,59 @@ export function PayrollHistoryModal({
                           </span>
                         </td>
                         <td className="p-3 font-sans">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onOpenRunDetails(r)}
-                              className="h-7 px-2 text-[11px] font-semibold"
-                              title="Consulter le livre de paie et récapitulatif"
-                            >
-                              Livre de paie
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onPrintAllSlipsForRun(r)}
-                              className="h-7 px-2 text-[11px] font-semibold flex items-center gap-1 text-blue-700"
-                              title="Imprimer tous les bulletins de cette période"
-                            >
-                              <Printer className="w-3 h-3" />
-                              <span>Bulletins</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => onOpenPaymentsForRun(r)}
-                              className="h-7 px-2 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-                              title="Suivi des règlements et paiements de cette paie"
-                            >
-                              Règlements
-                            </Button>
+                          <div className="flex flex-col gap-1 items-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onOpenRunDetails(r)}
+                                className="h-7 px-2 text-[11px] font-semibold"
+                                title="Consulter le livre de paie et récapitulatif"
+                              >
+                                Livre de paie
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onPrintAllSlipsForRun(r)}
+                                className="h-7 px-2 text-[11px] font-semibold flex items-center gap-1 text-blue-700"
+                                title="Imprimer tous les bulletins de cette période"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Bulletins</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => onOpenPaymentsForRun(r)}
+                                className="h-7 px-2 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                                title="Suivi des règlements et paiements de cette paie"
+                              >
+                                Règlements
+                              </Button>
+                            </div>
+                            <div className="flex items-center justify-center gap-1 text-[10px]">
+                              {onOpenRegularization && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenRegularization(r)}
+                                  className="text-amber-700 hover:text-amber-900 hover:underline font-semibold"
+                                >
+                                  + Régulariser
+                                </button>
+                              )}
+                              {onOpenRegularization && onOpenComplementary && (
+                                <span className="text-gray-300">•</span>
+                              )}
+                              {onOpenComplementary && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenComplementary(r)}
+                                  className="text-blue-700 hover:text-blue-900 hover:underline font-semibold"
+                                >
+                                  + Salarié omis
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>

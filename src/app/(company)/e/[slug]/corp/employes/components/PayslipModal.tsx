@@ -72,9 +72,19 @@ export function PayslipModal({
               <p className="text-[11px] text-gray-600">Cotonou, République du Bénin • Tél : +229 97 00 00 00</p>
             </div>
             <div className="text-right">
-              <span className="inline-block px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded font-black text-xs uppercase">
-                BULLETIN DE PAIE
-              </span>
+              {payslip.slipType === 'REGULARIZATION' ? (
+                <span className="inline-block px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded font-black text-xs uppercase">
+                  BULLETIN DE RÉGULARISATION
+                </span>
+              ) : payslip.slipType === 'COMPLEMENTARY' ? (
+                <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded font-black text-xs uppercase">
+                  PAIE COMPLÉMENTAIRE
+                </span>
+              ) : (
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded font-black text-xs uppercase">
+                  BULLETIN DE PAIE
+                </span>
+              )}
               <p className="text-xs font-bold text-gray-900 mt-1 font-mono">{payslip.payslipNumber}</p>
               <p className="text-xs font-bold text-blue-700 mt-0.5">Période : {monthLabel}</p>
               <p className="text-[10px] text-gray-500 font-mono mt-0.5">
@@ -82,6 +92,34 @@ export function PayslipModal({
               </p>
             </div>
           </div>
+
+          {/* Bannière de justification si régularisation */}
+          {payslip.slipType === 'REGULARIZATION' && (
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span>Régularisation attachée au bulletin n° {payslip.originalPayslipNumber || 'Initial'}</span>
+                <span className="text-[10px] uppercase bg-amber-200 px-2 py-0.5 rounded text-amber-900">Ajustement certifié</span>
+              </div>
+              <p className="text-[11px] text-amber-900 italic">
+                Motif : « {payslip.regularizationReason || 'Ajustement de paie'} »
+              </p>
+            </div>
+          )}
+
+          {/* Bannière de justification si paie complémentaire */}
+          {payslip.slipType === 'COMPLEMENTARY' && (
+            <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-blue-950 space-y-1">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span>Bulletin complémentaire (salarié omis lors de la paie principale)</span>
+                <span className="text-[10px] uppercase bg-blue-200 px-2 py-0.5 rounded text-blue-900">Rattachement validé</span>
+              </div>
+              {payslip.regularizationReason && (
+                <p className="text-[11px] text-blue-800 italic">
+                  Note : « {payslip.regularizationReason} »
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Coordonnées complètes du salarié */}
           <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 grid grid-cols-2 gap-4">

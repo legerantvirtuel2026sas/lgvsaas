@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateBeninIts, calculatePayslip } from '../../src/server/domain/payroll';
+import { calculateBeninIts, calculatePayslip, calculateRegularization } from '../../src/server/domain/payroll';
 import {
   recomputePayslipTotals,
   recomputeRunTotals,
@@ -291,6 +291,241 @@ describe('Calculs de paie et fiscalité sociale aux normes béninoises (Module M
       // Le reste à payer doit être de 50 000 FCFA et NE DOIT PAS être masqué par le trop-perçu de 172 394 FCFA !
       expect(runAvecImpaye.remainingEmployeesPay).toBe(50000);
       expect(runAvecImpaye.totalOverpaidEmployees).toBe(172394);
+    });
+  });
+
+  describe('Sécurisation de la paie, Régularisations et Paies complémentaires', () => {
+    it('calcule exactement l’incidence sociale et fiscale d’une régularisation (prime omise)', () => {
+      // Cas Romaric : Brut initial = 250 000 FCFA
+      // CNSS Salarié (3.6%) = 9 000 FCFA
+      // Assiette ITS = 241 000 FCFA -> ITS = 22 650 FCFA
+      // Net initial = 218 350 FCFA
+      // Prime omise = 20 000 FCFA
+      const reg = calculateRegularization({
+        originalGrossSalary: 250000,
+        originalCnssEmployee: 9000,
+        originalTaxableBase: 241000,
+        originalItsAmount: 22650,
+        originalNetToPay: 218350,
+        deltaGross: 20000,
+      });
+
+      // Nouveau Brut = 270 000 FCFA
+      expect(reg.newGrossSalary).toBe(270000);
+      // Delta CNSS Salarié = 270 000 * 0.036 - 9 000 = 9 720 - 9 000 = 720 FCFA
+      expect(reg.deltaCnssEmployee).toBe(720);
+      // Delta CNSS Patronal = 20 000 * 0.174 = 3 480 FCFA
+      expect(reg.deltaCnssEmployer).toBe(3480);
+      // Nouvelle assiette ITS = 270 000 - 9 720 = 260 280 FCFA
+      // ITS sur 260 280 : 9 000 (tranche 2) + 15 000 (tranche 3) + 10 280 * 19% (1 953) = 25 953 FCFA
+      // Delta ITS = 25 953 - 22 650 = 3 303 FCFA
+      expect(reg.deltaItsAmount).toBe(3303);
+      // Net à payer différentiel = 20 000 - 720 - 3 303 = 15 977 FCFA
+      expect(reg.netDelta).toBe(15977);
+      // Somme exacte : Net + CNSS Salarié + ITS = Delta Brut
+      expect(reg.netDelta + reg.deltaCnssEmployee + reg.deltaItsAmount).toBe(20000);
+    });
+
+    it('conserve l’intégrité du bulletin d’origine et des paiements lors de l’ajout d’un bulletin de régularisation', () => {
+      const originalSlip: PayslipItem = {
+        id: 'slip_romaric_initial',
+        payslipNumber: 'BUL-2026-11-001',
+        runId: 'run_2026_11',
+        companySlug: 'abp-technologie',
+        employeeId: 'emp_1',
+        employeeName: 'Romaric KOUASSI',
+        employeeMatricule: 'EMP-001',
+        employeeJob: 'Commercial',
+        employeeDepartment: 'Commercial',
+        employeeCnss: '1234567890',
+        periodMonth: 11,
+        periodYear: 2026,
+        baseSalary: 250000,
+        transportAllowance: 0,
+        mealAllowance: 0,
+        rendementAllowance: 0,
+        responsibilityAllowance: 0,
+        overtimeAmount: 0,
+        commissions: 0,
+        exceptionalBonus: 0,
+        totalAllowances: 0,
+        grossSalary: 250000,
+        cnssEmployee: 9000,
+        cnssEmployer: 43500,
+        cnssEmployerRetirement: 16000,
+        cnssEmployerFamily: 22500,
+        cnssEmployerAccident: 5000,
+        taxableBase: 241000,
+        itsAmount: 22650,
+        advanceDeduction: 0,
+        otherDeductions: 0,
+        netToPay: 218350,
+        employerTotalCost: 293500,
+        paymentStatus: 'PAYE',
+        paidAmount: 218350,
+        remainingAmount: 0,
+        transactions: [
+          {
+            id: 'tx_init_1',
+            date: '2026-11-26',
+            amount: 218350,
+            paymentMethod: 'Virement bancaire',
+            reference: 'VIR-EMP-001-2026-11',
+            status: 'VALIDATED',
+            createdAt: '2026-11-26T10:00:00.000Z',
+          },
+        ],
+        createdAt: '2026-11-26T08:00:00.000Z',
+      };
+
+      const regSlip: PayslipItem = {
+        id: 'reg_2026_11_emp_1_001',
+        payslipNumber: 'REG-2026-11-001',
+        slipType: 'REGULARIZATION',
+        originalPayslipId: originalSlip.id,
+        originalPayslipNumber: originalSlip.payslipNumber,
+        regularizationReason: 'Prime commerciale oubliée',
+        runId: 'run_2026_11',
+        companySlug: 'abp-technologie',
+        employeeId: 'emp_1',
+        employeeName: 'Romaric KOUASSI',
+        employeeMatricule: 'EMP-001',
+        employeeJob: 'Commercial',
+        employeeDepartment: 'Commercial',
+        employeeCnss: '1234567890',
+        periodMonth: 11,
+        periodYear: 2026,
+        baseSalary: 0,
+        transportAllowance: 0,
+        mealAllowance: 0,
+        rendementAllowance: 0,
+        responsibilityAllowance: 0,
+        overtimeAmount: 0,
+        commissions: 0,
+        exceptionalBonus: 20000,
+        totalAllowances: 20000,
+        grossSalary: 20000,
+        cnssEmployee: 720,
+        cnssEmployer: 3480,
+        cnssEmployerRetirement: 1280,
+        cnssEmployerFamily: 1800,
+        cnssEmployerAccident: 400,
+        taxableBase: 19280,
+        itsAmount: 3303,
+        advanceDeduction: 0,
+        otherDeductions: 0,
+        netToPay: 15977,
+        employerTotalCost: 23480,
+        paymentStatus: 'NON_PAYE',
+        paidAmount: 0,
+        remainingAmount: 15977,
+        transactions: [],
+        createdAt: '2026-11-26T12:00:00.000Z',
+      };
+
+      const runWithReg = recomputeRunTotals({
+        id: 'run_2026_11',
+        periodKey: '2026-11',
+        month: 11,
+        year: 2026,
+        monthLabel: 'Novembre 2026',
+        establishment: 'Siège Principal Cotonou',
+        status: 'VALIDATED',
+        employeeCount: 1,
+        totalGross: 250000,
+        totalCnssEmployee: 9000,
+        totalCnssEmployer: 43500,
+        totalCnss: 52500,
+        totalIts: 22650,
+        totalNet: 218350,
+        totalAdvancesDeducted: 0,
+        totalEmployerCost: 293500,
+        totalPaidToEmployees: 218350,
+        remainingEmployeesPay: 0,
+        cnssDeclaredAmount: 52500,
+        cnssPaidAmount: 0,
+        cnssPaymentStatus: 'EN_ATTENTE',
+        dgiDeclaredAmount: 22650,
+        dgiPaidAmount: 0,
+        dgiPaymentStatus: 'EN_ATTENTE',
+        payslips: [originalSlip, regSlip],
+      });
+
+      // Le bulletin d'origine est intact
+      expect(runWithReg.payslips[0].netToPay).toBe(218350);
+      expect(runWithReg.payslips[0].paidAmount).toBe(218350);
+      expect(runWithReg.payslips[0].remainingAmount).toBe(0);
+      expect(runWithReg.payslips[0].transactions?.length).toBe(1);
+
+      // Le bulletin de régularisation est distinct et en attente de paiement
+      expect(runWithReg.payslips[1].payslipNumber).toBe('REG-2026-11-001');
+      expect(runWithReg.payslips[1].netToPay).toBe(15977);
+      expect(runWithReg.payslips[1].remainingAmount).toBe(15977);
+      expect(runWithReg.payslips[1].paidAmount).toBe(0);
+
+      // Les totaux de la période intègrent la régularisation sans dégrader l'historique
+      expect(runWithReg.totalGross).toBe(270000);
+      expect(runWithReg.totalNet).toBe(218350 + 15977);
+      expect(runWithReg.totalPaidToEmployees).toBe(218350);
+      expect(runWithReg.remainingEmployeesPay).toBe(15977);
+    });
+
+    it('génère une paie complémentaire isolée pour un salarié omis sans impacter les autres salariés', () => {
+      // Salarié 4 omis lors de la paie initiale (Base 100 000 FCFA)
+      const compPayslip = calculatePayslip({
+        baseSalary: 100000,
+      });
+
+      const compSlip: PayslipItem = {
+        id: 'comp_2026_11_emp_4',
+        payslipNumber: 'BUL-COMP-2026-11-001',
+        slipType: 'COMPLEMENTARY',
+        regularizationReason: 'Salarié omis lors de la clôture principale',
+        runId: 'run_2026_11',
+        companySlug: 'abp-technologie',
+        employeeId: 'emp_4',
+        employeeName: 'Koffi MENSAH',
+        employeeMatricule: 'EMP-004',
+        employeeJob: 'Assistant RH',
+        employeeDepartment: 'Ressources Humaines',
+        employeeCnss: '4455667788',
+        periodMonth: 11,
+        periodYear: 2026,
+        baseSalary: compPayslip.baseSalary,
+        transportAllowance: 0,
+        mealAllowance: 0,
+        rendementAllowance: 0,
+        responsibilityAllowance: 0,
+        overtimeAmount: 0,
+        commissions: 0,
+        exceptionalBonus: 0,
+        totalAllowances: 0,
+        grossSalary: compPayslip.grossSalary,
+        cnssEmployee: compPayslip.cnssEmployee,
+        cnssEmployer: compPayslip.cnssEmployer,
+        cnssEmployerRetirement: compPayslip.cnssEmployerRetirement,
+        cnssEmployerFamily: compPayslip.cnssEmployerFamily,
+        cnssEmployerAccident: compPayslip.cnssEmployerAccident,
+        taxableBase: compPayslip.taxableBase,
+        itsAmount: compPayslip.itsAmount,
+        advanceDeduction: 0,
+        otherDeductions: 0,
+        netToPay: compPayslip.netToPay,
+        employerTotalCost: compPayslip.employerTotalCost,
+        paymentStatus: 'NON_PAYE',
+        paidAmount: 0,
+        remainingAmount: compPayslip.netToPay,
+        transactions: [],
+        createdAt: '2026-11-26T12:30:00.000Z',
+      };
+
+      expect(compSlip.slipType).toBe('COMPLEMENTARY');
+      expect(compSlip.payslipNumber).toBe('BUL-COMP-2026-11-001');
+      expect(compSlip.grossSalary).toBe(100000);
+      expect(compSlip.cnssEmployee).toBe(3600);
+      // Assiette ITS = 100 000 - 3 600 = 96 400 -> Tranche 60k-150k : (96 400 - 60 000 = 36 400) * 10% = 3 640 FCFA
+      expect(compSlip.itsAmount).toBe(3640);
+      expect(compSlip.netToPay).toBe(100000 - 3600 - 3640); // 92 760 FCFA
     });
   });
 });

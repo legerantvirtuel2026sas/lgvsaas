@@ -135,3 +135,63 @@ export function calculatePayslip(input: PayrollCalculationInput): PayrollCalcula
     employerTotalCost,
   };
 }
+
+export interface RegularizationInput {
+  originalGrossSalary: number;
+  originalCnssEmployee: number;
+  originalTaxableBase: number;
+  originalItsAmount: number;
+  originalNetToPay: number;
+  deltaGross: number; // Montant brut ajouté (prime, rappel) ou déduit
+  deltaOtherDeductions?: number;
+}
+
+export interface RegularizationResult {
+  deltaGross: number;
+  newGrossSalary: number;
+  newCnssEmployee: number;
+  deltaCnssEmployee: number;
+  newCnssEmployer: number;
+  deltaCnssEmployer: number;
+  newTaxableBase: number;
+  newItsAmount: number;
+  deltaItsAmount: number;
+  netDelta: number;
+}
+
+/**
+ * Calcule l'incidence sociale et fiscale d'une régularisation de paie :
+ * - Différentiel CNSS salarié (3.6%) et patronal (17.4%)
+ * - Différentiel d'ITS sur la nouvelle tranche marginale
+ * - Net différentiel à payer (ou à déduire)
+ */
+export function calculateRegularization(input: RegularizationInput): RegularizationResult {
+  const newGrossSalary = Math.max(0, input.originalGrossSalary + input.deltaGross);
+  const newCnssEmployee = Math.round(newGrossSalary * 0.036);
+  const deltaCnssEmployee = newCnssEmployee - input.originalCnssEmployee;
+
+  const newCnssEmployer = Math.round(newGrossSalary * 0.174);
+  const originalCnssEmployer = Math.round(input.originalGrossSalary * 0.174);
+  const deltaCnssEmployer = newCnssEmployer - originalCnssEmployer;
+
+  const newTaxableBase = Math.max(0, newGrossSalary - newCnssEmployee);
+  const newItsAmount = calculateBeninIts(newTaxableBase);
+  const deltaItsAmount = newItsAmount - input.originalItsAmount;
+
+  const otherDeductions = Math.round(input.deltaOtherDeductions || 0);
+  const netDelta = input.deltaGross - deltaCnssEmployee - deltaItsAmount - otherDeductions;
+
+  return {
+    deltaGross: input.deltaGross,
+    newGrossSalary,
+    newCnssEmployee,
+    deltaCnssEmployee,
+    newCnssEmployer,
+    deltaCnssEmployer,
+    newTaxableBase,
+    newItsAmount,
+    deltaItsAmount,
+    netDelta,
+  };
+}
+

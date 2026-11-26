@@ -83,9 +83,28 @@ export interface PaymentTransaction {
   cancellationReason?: string;
 }
 
+export type PayrollType = 'MAIN' | 'REGULARIZATION' | 'COMPLEMENTARY';
+
+export interface RegularizationDetail {
+  originalPayslipId: string;
+  originalPayslipNumber: string;
+  reason: string;
+  adjustmentType: 'PRIME' | 'HEURES_SUP' | 'RAPPEL' | 'INDEMNITE' | 'RETENUE';
+  grossDelta: number;
+  cnssEmployeeDelta: number;
+  cnssEmployerDelta: number;
+  itsDelta: number;
+  netDelta: number;
+}
+
 export interface PayslipItem {
   id: string;
-  payslipNumber: string; // Ex: BUL-2026-11-001
+  payslipNumber: string; // Ex: BUL-2026-11-001 ou REG-2026-11-001 ou BUL-COMP-2026-11-001
+  slipType?: PayrollType;
+  originalPayslipId?: string;
+  originalPayslipNumber?: string;
+  regularizationReason?: string;
+  regularizationDetails?: RegularizationDetail;
   runId: string;
   companySlug: string;
   employeeId: string;
@@ -130,6 +149,8 @@ export interface PayslipItem {
 
 export interface PayrollRunItem {
   id: string;
+  runType?: PayrollType; // 'MAIN' (défaut), 'REGULARIZATION', 'COMPLEMENTARY'
+  notes?: string;
   periodKey: string; // Ex: "2026-11"
   month: number;
   year: number;
@@ -424,6 +445,11 @@ export function recomputePayslipTotals(slip: PayslipItem): PayslipItem {
 export function recomputeRunTotals(run: PayrollRunItem): PayrollRunItem {
   const updatedPayslips = (run.payslips || []).map(recomputePayslipTotals);
 
+  const totalGross = updatedPayslips.reduce((sum, p) => sum + p.grossSalary, 0);
+  const totalCnssEmployee = updatedPayslips.reduce((sum, p) => sum + p.cnssEmployee, 0);
+  const totalCnssEmployer = updatedPayslips.reduce((sum, p) => sum + p.cnssEmployer, 0);
+  const totalCnss = totalCnssEmployee + totalCnssEmployer;
+  const totalIts = updatedPayslips.reduce((sum, p) => sum + p.itsAmount, 0);
   const totalNet = updatedPayslips.reduce((sum, p) => sum + p.netToPay, 0);
   const totalPaidToEmployees = updatedPayslips.reduce((sum, p) => sum + p.paidAmount, 0);
 
@@ -433,11 +459,22 @@ export function recomputeRunTotals(run: PayrollRunItem): PayrollRunItem {
 
   // Somme des trop-perçus individuels à régulariser
   const totalOverpaidEmployees = updatedPayslips.reduce((sum, p) => sum + (p.overpaidAmount || 0), 0);
+  const totalAdvancesDeducted = updatedPayslips.reduce((sum, p) => sum + (p.advanceDeduction || 0), 0);
+  const totalEmployerCost = totalGross + totalCnssEmployer;
+  const employeeCount = new Set(updatedPayslips.map((p) => p.employeeId)).size;
 
   return {
     ...run,
     payslips: updatedPayslips,
+    employeeCount,
+    totalGross,
+    totalCnssEmployee,
+    totalCnssEmployer,
+    totalCnss,
+    totalIts,
     totalNet,
+    totalAdvancesDeducted,
+    totalEmployerCost,
     totalPaidToEmployees,
     remainingEmployeesPay,
     totalOverpaidEmployees,
